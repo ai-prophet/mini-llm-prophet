@@ -27,6 +27,7 @@ class SearchTool(Protocol):
 
 _SEARCH_CLASS_MAPPING: dict[str, str] = {
     "brave": "miniprophet.search.brave.BraveSearchTool",
+    "perplexity": "miniprophet.search.perplexity.PerplexitySearchTool",
 }
 
 
