@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-llm-prophet"
+version = "0.1.0"
+description = "A minimal LLM forecasting agent scaffolding"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests",
+    "trafilatura",
+    "pydantic>=2.0",
+    "typer[all]",
+    "rich",
+    "tenacity",
+    "pyyaml",
+]
+
+[project.scripts]
+prophet = "miniprophet.run.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
