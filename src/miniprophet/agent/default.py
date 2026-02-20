@@ -9,8 +9,10 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from miniprophet import Environment, Model, __version__
+from miniprophet import ContextManager, Environment, Model, __version__
 from miniprophet.exceptions import InterruptAgentFlow, LimitsExceeded
+from miniprophet.utils import display
+from miniprophet.utils.metrics import evaluate_submission, validate_ground_truth
 from miniprophet.utils.serialize import recursive_merge
 
 
@@ -21,6 +23,7 @@ class AgentConfig(BaseModel):
     cost_limit: float = 3.0
     search_limit: int = 10
     max_outcomes: int = 20
+    context_window: int = 6
     output_path: Path | None = None
 
 
@@ -30,6 +33,7 @@ class DefaultForecastAgent:
         model: Model,
         env: Environment,
         *,
+        context_manager: ContextManager | None = None,
         config_class: type = AgentConfig,
         **kwargs,
     ) -> None:
@@ -37,6 +41,7 @@ class DefaultForecastAgent:
         self.messages: list[dict] = []
         self.model = model
         self.env = env
+        self.context_manager = context_manager
         self.logger = logging.getLogger("miniprophet.agent")
         self.model_cost = 0.0
         self.search_cost = 0.0
@@ -47,20 +52,10 @@ class DefaultForecastAgent:
     def total_cost(self) -> float:
         return self.model_cost + self.search_cost
 
-    # ------------------------------------------------------------------
-    # Template rendering
-    # ------------------------------------------------------------------
-
     def _render(self, template: str, **extra_vars) -> str:
-        """Render a template with str.format_map (no Jinja2)."""
         return template.format_map(extra_vars)
 
-    # ------------------------------------------------------------------
-    # Message helpers
-    # ------------------------------------------------------------------
-
     def add_messages(self, *messages: dict) -> list[dict]:
-        self.logger.debug("Adding %d message(s)", len(messages))
         self.messages.extend(messages)
         return list(messages)
 
@@ -82,30 +77,45 @@ class DefaultForecastAgent:
     # Core loop
     # ------------------------------------------------------------------
 
-    def run(self, title: str, outcomes: list[str]) -> dict:
+    def run(
+        self,
+        title: str,
+        outcomes: list[str],
+        ground_truth: dict[str, int] | None = None,
+    ) -> dict:
         if len(outcomes) > self.config.max_outcomes:
             raise ValueError(
                 f"Too many outcomes ({len(outcomes)} > {self.config.max_outcomes}). "
                 "Increase max_outcomes in config if intentional."
             )
+        if ground_truth is not None:
+            validate_ground_truth(outcomes, ground_truth)
 
         outcomes_formatted = ", ".join(outcomes)
         self.messages = []
         self.add_messages(
             self.model.format_message(
                 role="system",
-                content=self._render(self.config.system_template, title=title, outcomes_formatted=outcomes_formatted),
+                content=self._render(
+                    self.config.system_template, title=title, outcomes_formatted=outcomes_formatted
+                ),
             ),
             self.model.format_message(
                 role="user",
-                content=self._render(self.config.instance_template, title=title, outcomes_formatted=outcomes_formatted),
+                content=self._render(
+                    self.config.instance_template,
+                    title=title,
+                    outcomes_formatted=outcomes_formatted,
+                ),
             ),
         )
 
-        self.logger.info(
-            "[bold]Forecasting:[/bold] %s  |  Outcomes: %s",
+        display.print_run_header(
             title,
             outcomes_formatted,
+            self.config.step_limit,
+            self.config.cost_limit,
+            self.config.search_limit,
         )
 
         while True:
@@ -122,19 +132,27 @@ class DefaultForecastAgent:
                 break
 
         result = self.messages[-1].get("extra", {})
-        self.logger.info(
-            "[bold green]Done.[/bold green]  Status: %s  |  "
-            "Model cost: $%.4f  Search cost: $%.4f  Total: $%.4f  |  Steps: %d  Searches: %d",
+
+        if ground_truth is not None and result.get("submission"):
+            evaluation = evaluate_submission(result["submission"], ground_truth)
+            result["evaluation"] = evaluation
+            display.print_evaluation(evaluation)
+
+        display.print_run_footer(
             result.get("exit_status", "unknown"),
+            self.n_calls,
+            self.n_searches,
             self.model_cost,
             self.search_cost,
             self.total_cost,
-            self.n_calls,
-            self.n_searches,
         )
         return result
 
     def step(self) -> list[dict]:
+        if self.context_manager is not None:
+            self.messages = self.context_manager.manage(
+                self.messages, step=self.n_calls, board_state=self.env.board.render()
+            )
         return self.execute_actions(self.query())
 
     def query(self) -> dict:
@@ -161,29 +179,26 @@ class DefaultForecastAgent:
         self.model_cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
 
-        action_names = [a.get("name", "?") for a in message.get("extra", {}).get("actions", [])]
-        self.logger.info(
-            "[bold]Step %d[/bold]  tool=%s  model_cost=$%.4f  total=$%.4f",
-            self.n_calls,
-            ", ".join(action_names) or "none",
-            self.model_cost,
-            self.total_cost,
-        )
+        display.print_step_header(self.n_calls, self.model_cost, self.search_cost, self.total_cost)
+        display.print_model_response(message)
         return message
 
     def execute_actions(self, message: dict) -> list[dict]:
-        outputs = [
-            self.env.execute(action)
-            for action in message.get("extra", {}).get("actions", [])
-        ]
-        for output in outputs:
+        actions = message.get("extra", {}).get("actions", [])
+        outputs = [self.env.execute(action) for action in actions]
+        for action, output in zip(actions, outputs):
             sc = output.get("search_cost", 0.0)
             if sc:
                 self.search_cost += sc
                 self.n_searches += 1
-        return self.add_messages(
-            *self.model.format_observation_messages(message, outputs)
-        )
+            if action.get("name") == "search" and self.context_manager is not None:
+                raw = action.get("arguments", "{}")
+                args = json.loads(raw) if isinstance(raw, str) else raw
+                query = args.get("query", "")
+                if query and hasattr(self.context_manager, "record_query"):
+                    self.context_manager.record_query(query)
+            display.print_observation(output)
+        return self.add_messages(*self.model.format_observation_messages(message, outputs))
 
     # ------------------------------------------------------------------
     # Serialization / save
@@ -208,6 +223,7 @@ class DefaultForecastAgent:
                 "version": __version__,
                 "exit_status": last_extra.get("exit_status", ""),
                 "submission": last_extra.get("submission", ""),
+                "evaluation": last_extra.get("evaluation", {}),
             },
             "messages": self.messages,
             "trajectory_format": "mini-llm-prophet-1.0",

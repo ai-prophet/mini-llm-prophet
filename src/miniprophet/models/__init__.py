@@ -56,9 +56,7 @@ def get_model(config: dict | None = None) -> Model:
     if not config.get("model_name"):
         config["model_name"] = os.getenv("MINIPROPHET_MODEL_NAME", "")
     if not config["model_name"]:
-        raise ValueError(
-            "No model name set. Pass --model or set MINIPROPHET_MODEL_NAME."
-        )
+        raise ValueError("No model name set. Pass --model or set MINIPROPHET_MODEL_NAME.")
 
     model_class_key = config.pop("model_class", "openrouter")
     full_path = _MODEL_CLASS_MAPPING.get(model_class_key, model_class_key)

@@ -1,4 +1,5 @@
 agent:
+  output_path: null
   system_template: |
     You are a forecasting agent specialized in researching and predicting real-world event outcomes.
 
@@ -33,6 +34,7 @@ agent:
   cost_limit: 3.0
   search_limit: 10
   max_outcomes: 20
+  context_window: 6
 
 model:
   model_name: "openai/gpt-4o-mini"

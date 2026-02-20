@@ -12,13 +12,17 @@ def _setup_root_logger() -> None:
         show_time=False,
         show_level=False,
         markup=True,
+        rich_tracebacks=True,
     )
-    formatter = logging.Formatter("%(name)s: %(levelname)s: %(message)s")
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     root.addHandler(handler)
 
 
-def add_file_handler(path: Path | str, level: int = logging.DEBUG, *, print_path: bool = True) -> None:
+def add_file_handler(
+    path: Path | str, level: int = logging.DEBUG, *, print_path: bool = True
+) -> None:
     root = logging.getLogger("miniprophet")
     handler = logging.FileHandler(path)
     handler.setLevel(level)

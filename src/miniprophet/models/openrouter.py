@@ -25,7 +25,7 @@ class OpenRouterModelConfig(BaseModel):
     observation_template: str = "{output}"
     cost_tracking: Literal["default", "ignore_errors"] = os.getenv(
         "MINIPROPHET_COST_TRACKING", "default"
-    )
+    )  # type: ignore
 
 
 class OpenRouterAPIError(Exception):
@@ -41,10 +41,7 @@ class OpenRouterRateLimitError(Exception):
 
 
 class OpenRouterModel:
-    abort_exceptions: list[type[Exception]] = [
-        OpenRouterAuthenticationError,
-        KeyboardInterrupt,
-    ]
+    abort_exceptions: list[type[Exception]] = [OpenRouterAuthenticationError, KeyboardInterrupt]  # type: ignore
 
     def __init__(self, **kwargs: Any) -> None:
         self.config = OpenRouterModelConfig(**kwargs)
@@ -166,9 +163,7 @@ class OpenRouterModel:
     def format_message(self, **kwargs: Any) -> dict:
         return dict(kwargs)
 
-    def format_observation_messages(
-        self, message: dict, outputs: list[dict]
-    ) -> list[dict]:
+    def format_observation_messages(self, message: dict, outputs: list[dict]) -> list[dict]:
         """Format environment outputs into tool-role messages for the API."""
         actions = message.get("extra", {}).get("actions", [])
         not_executed = {"output": "Action was not executed.", "error": True}
@@ -176,9 +171,7 @@ class OpenRouterModel:
 
         results: list[dict] = []
         for action, output in zip(actions, padded):
-            content = self.config.observation_template.format(
-                output=output.get("output", "")
-            )
+            content = self.config.observation_template.format(output=output.get("output", ""))
             msg: dict[str, Any] = {
                 "content": content,
                 "extra": {

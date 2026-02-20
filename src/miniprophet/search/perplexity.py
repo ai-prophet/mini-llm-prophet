@@ -20,6 +20,8 @@ from miniprophet.search import SearchResult
 logger = logging.getLogger("miniprophet.search.perplexity")
 
 PERPLEXITY_API_ENDPOINT = "https://api.perplexity.ai/search"
+# pricing from: https://docs.perplexity.ai/docs/getting-started/pricing
+PERPLEXITY_PER_SEARCH_COST = 5 / 1000
 
 
 class PerplexitySearchTool:
@@ -69,7 +71,9 @@ class PerplexitySearchTool:
             resp.raise_for_status()
         except requests.exceptions.HTTPError:
             if resp.status_code == 401:
-                raise SearchAuthError("Perplexity API authentication failed. Check PERPLEXITY_API_KEY.")
+                raise SearchAuthError(
+                    "Perplexity API authentication failed. Check PERPLEXITY_API_KEY."
+                )
             if resp.status_code == 429:
                 raise SearchRateLimitError("Perplexity API rate limit exceeded")
             raise SearchNetworkError(f"Perplexity API HTTP {resp.status_code}: {resp.text[:300]}")
@@ -92,7 +96,8 @@ class PerplexitySearchTool:
                 )
 
         logger.info(f"Perplexity search '{query}': {len(sources)} source(s)")
-        return SearchResult(sources=sources, cost=0.0)
+        # For perplexity, the cost is fixed for each request, regardless of the number of sources returned
+        return SearchResult(sources=sources, cost=PERPLEXITY_PER_SEARCH_COST)
 
     def serialize(self) -> dict:
         return {

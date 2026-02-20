@@ -93,11 +93,13 @@ class BraveSearchTool:
         for item in data.get("web", {}).get("results", []):
             url = item.get("url")
             if url:
-                results.append({
-                    "url": url,
-                    "title": item.get("title", ""),
-                    "snippet": item.get("description", ""),
-                })
+                results.append(
+                    {
+                        "url": url,
+                        "title": item.get("title", ""),
+                        "snippet": item.get("description", ""),
+                    }
+                )
         return results[:limit]
 
     def _fetch_article_text(self, url: str) -> str | None:

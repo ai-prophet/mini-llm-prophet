@@ -4,6 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+VALID_SENTIMENTS = {"very_positive", "positive", "neutral", "negative", "very_negative"}
+
+REACTION_COMPACT = {
+    "very_positive": "++",
+    "positive": "+",
+    "neutral": "~",
+    "negative": "-",
+    "very_negative": "--",
+}
+
 
 @dataclass
 class Source:
@@ -22,6 +32,7 @@ class BoardEntry:
     id: int
     source: Source
     note: str
+    reaction: dict[str, str] = field(default_factory=dict)
 
 
 class SourceBoard:
@@ -34,16 +45,23 @@ class SourceBoard:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def add(self, source: Source, note: str) -> BoardEntry:
-        entry = BoardEntry(id=self._next_id, source=source, note=note)
+    def add(self, source: Source, note: str, reaction: dict[str, str] | None = None) -> BoardEntry:
+        entry = BoardEntry(id=self._next_id, source=source, note=note, reaction=reaction or {})
         self._entries.append(entry)
         self._next_id += 1
         return entry
 
-    def edit_note(self, board_id: int, new_note: str) -> BoardEntry:
+    def edit_note(
+        self,
+        board_id: int,
+        new_note: str,
+        reaction: dict[str, str] | None = None,
+    ) -> BoardEntry:
         for entry in self._entries:
             if entry.id == board_id:
                 entry.note = new_note
+                if reaction is not None:
+                    entry.reaction = reaction
                 return entry
         raise KeyError(f"No board entry with id {board_id}")
 
@@ -59,18 +77,30 @@ class SourceBoard:
             return "--- Source Board (empty) ---"
         lines = [f"--- Source Board ({len(self._entries)} entries) ---"]
         for entry in self._entries:
-            lines.append(
+            block = (
                 f'[#{entry.id}] "{entry.source.title}" ({entry.source.url})\n'
                 f"      Note: {entry.note}"
             )
+            if entry.reaction:
+                parts = [
+                    f"{outcome} [{REACTION_COMPACT.get(s, '?')}]"
+                    for outcome, s in entry.reaction.items()
+                ]
+                block += f"\n      Reactions: {'  '.join(parts)}"
+            lines.append(block)
         return "\n".join(lines)
 
     def serialize(self) -> list[dict]:
         return [
             {
                 "id": e.id,
-                "source": {"url": e.source.url, "title": e.source.title, "snippet": e.source.snippet},
+                "source": {
+                    "url": e.source.url,
+                    "title": e.source.title,
+                    "snippet": e.source.snippet,
+                },
                 "note": e.note,
+                "reaction": e.reaction,
             }
             for e in self._entries
         ]

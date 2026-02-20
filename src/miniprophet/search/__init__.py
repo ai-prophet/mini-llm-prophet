@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass, field
+import inspect
+from dataclasses import dataclass
 from typing import Protocol
 
 from miniprophet.environment.source_board import Source
@@ -49,7 +50,13 @@ def get_search_tool(config: dict) -> SearchTool:
             f"Unknown search class: {class_key} (resolved to {full_path}, "
             f"available: {list(_SEARCH_CLASS_MAPPING)})"
         ) from exc
-    return cls(**config)
+    sig = inspect.signature(cls.__init__)
+    if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+        accepted = config
+    else:
+        valid_keys = set(sig.parameters.keys()) - {"self"}
+        accepted = {k: v for k, v in config.items() if k in valid_keys}
+    return cls(**accepted)
 
 
 __all__ = ["SearchTool", "SearchResult", "get_search_tool", "Source"]

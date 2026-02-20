@@ -6,7 +6,7 @@ Provides:
 - Protocol definitions for core components (Model, Environment)
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from pathlib import Path
 from typing import Any, Protocol
@@ -40,9 +40,16 @@ class Environment(Protocol):
     def serialize(self) -> dict: ...
 
 
+class ContextManager(Protocol):
+    """Protocol for managing the message context between steps."""
+
+    def manage(self, messages: list[dict], *, step: int, **kwargs) -> list[dict]: ...
+
+
 __all__ = [
     "Model",
     "Environment",
+    "ContextManager",
     "package_dir",
     "__version__",
 ]
