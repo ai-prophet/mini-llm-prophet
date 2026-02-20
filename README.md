@@ -1,5 +1,5 @@
-<p align="center">
-  <img src="./assets/icon.svg" alt="mini-llm-prophet icon" style="height: 7em"/>
+<p align="left">
+  <img src="./assets/icon.svg" alt="mini-llm-prophet icon" style="height:10em"/>
 </p>
 
 # mini-llm-prophet
