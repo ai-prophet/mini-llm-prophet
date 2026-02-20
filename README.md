@@ -1,9 +1,8 @@
-# mini-llm-prophet
-
 <p align="center">
-  <img src="./assets/icon.svg" alt="mini-llm-prophet icon" width="128"/>
+  <img src="./assets/icon.svg" alt="mini-llm-prophet icon" style="height: 7em"/>
 </p>
 
+# mini-llm-prophet
 
 A minimal LLM forecasting agent scaffolding. Inspired by [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent).
 
