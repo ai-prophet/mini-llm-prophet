@@ -15,41 +15,55 @@ pip install -e .
 
 ```bash
 export OPENROUTER_API_KEY="your-openrouter-key"
-export BRAVE_API_KEY="your-brave-search-key"       # for Brave search backend
+export PERPLEXITY_API_KEY="your-perplexity-key"    # for Perplexity search backend (default searcher)
 # or
-export PERPLEXITY_API_KEY="your-perplexity-key"    # for Perplexity search backend
+export BRAVE_API_KEY="your-brave-search-key"       # for Brave search backend
 ```
+
+More model (other than `OpenRouter`) classes will be supported in the future.
 
 ### 3. Run
 
 ```bash
 prophet \
   --title "Which team will win the NBA championship in 2026?" \
-  --outcomes "Bucks,Warriors,Nets,Suns,Celtics" \
-  --model openai/gpt-4o-mini
+  --outcomes "Bucks,Warriors,Nets,Suns,Celtics" \  # use comma-separated list of outcomes
+  --model minimax/minimax-m2.5
+```
+
+**Optionally**, if you want to perform evaluation, you can pass the ground truth as a JSON string:
+
+```bash
+prophet \
+  --title "Which team will win the NBA championship in 2025?" \
+  --outcomes "Thunder,Warriors,Nets,Suns,Celtics" \
+  --ground-truth '{"Thunder": 1, "Warriors": 0, "Nets": 0, "Suns": 0, "Celtics": 0}'
 ```
 
 Or use **interactive mode** to set up via a TUI (with optional Kalshi market import):
 
 ```bash
-prophet -i
+prophet -i \
+  --model minimax/minimax-m2.5
 ```
 
 ## CLI Options
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--title` | `-t` | The forecasting question |
-| `--outcomes` | `-o` | Comma-separated possible outcomes |
-| `--model` | `-m` | Model name (OpenRouter format) |
-| `--interactive` | `-i` | Enter interactive TUI mode |
-| `--ground-truth` | `-g` | Ground truth JSON for evaluation (e.g. `'{"Yes": 1, "No": 0}'`) |
-| `--cost-limit` | `-l` | Total cost limit in USD (default: 3.0) |
-| `--search-limit` | | Max search queries (default: 10) |
-| `--step-limit` | | Max agent steps (default: 30) |
-| `--config` | `-c` | Config files or `key=value` overrides |
-| `--output` | | Save trajectory JSON to this path |
-| `--model-class` | | Override model class |
+
+| Flag             | Short | Description                                                     |
+| ---------------- | ----- | --------------------------------------------------------------- |
+| `--title`        | `-t`  | The forecasting question                                        |
+| `--outcomes`     | `-o`  | Comma-separated possible outcomes                               |
+| `--model`        | `-m`  | Model name (OpenRouter format)                                  |
+| `--interactive`  | `-i`  | Enter interactive TUI mode                                      |
+| `--ground-truth` | `-g`  | Ground truth JSON for evaluation (e.g. `'{"Yes": 1, "No": 0}'`) |
+| `--cost-limit`   | `-l`  | Total cost limit in USD (default: 3.0)                          |
+| `--search-limit` |       | Max search queries (default: 10)                                |
+| `--step-limit`   |       | Max agent steps (default: 30)                                   |
+| `--config`       | `-c`  | Config files or `key=value` overrides                           |
+| `--output`       |       | Save trajectory JSON to this path                               |
+| `--model-class`  |       | Override model class                                            |
+
 
 ## Configuration
 
@@ -71,24 +85,28 @@ The agent runs a tool-call loop where each step allows exactly one tool call:
 3. **Edit Note** -- update notes or reactions on previously saved sources
 4. **Submit** -- provide a probabilistic forecast for all outcomes
 
+Before each step, if the agent has a `ContextManager` enabled, it will manage the context window (e.g. by truncating the message history).
+You can see the default context management strategy in `src/miniprophet/agent/context.py`.
+
 ### Key Components
 
-- **`DefaultForecastAgent`** -- the core agent loop
-- **`ForecastEnvironment`** -- dispatches tool calls, manages source board state
-- **`SlidingWindowContextManager`** -- stateful context truncation with query history tracking
-- **`OpenRouterModel`** -- LLM interface via OpenRouter API
-- **`BraveSearchTool` / `PerplexitySearchTool`** -- pluggable search backends
+- `**DefaultForecastAgent`** -- the core agent loop
+- `**ForecastEnvironment**` -- dispatches tool calls, manages source board state
+- `**SlidingWindowContextManager**` -- stateful context truncation with query history tracking
+- `**OpenRouterModel**` -- LLM interface via OpenRouter API
+- `**BraveSearchTool` / `PerplexitySearchTool**` -- pluggable search backends
 
 ### Cost Tracking
 
 The agent tracks three cost categories:
+
 - **Model cost** -- LLM API usage
 - **Search cost** -- search tool usage (0 for Brave, nonzero for agentic search backends)
 - **Total cost** -- sum of both; the `cost_limit` applies here
 
 ### Evaluation Mode
 
-Pass `--ground-truth` to evaluate the agent's forecast against known outcomes:
+Pass `--ground-truth / -g` to evaluate the agent's forecast against known outcomes:
 
 ```bash
 prophet -t "Will it rain tomorrow?" -o "Yes,No" -g '{"Yes": 1, "No": 0}'
@@ -146,3 +164,4 @@ Implement the `MarketService` protocol to add new prediction market integrations
 pip install -e ".[dev]"
 pre-commit install
 ```
+
