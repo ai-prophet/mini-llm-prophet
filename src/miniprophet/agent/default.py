@@ -86,7 +86,7 @@ class DefaultForecastAgent:
         if len(outcomes) > self.config.max_outcomes:
             raise ValueError(
                 f"Too many outcomes ({len(outcomes)} > {self.config.max_outcomes}). "
-                "Increase max_outcomes in config if intentional."
+                "Increase `max_outcomes` in config if intentional."
             )
         if ground_truth is not None:
             validate_ground_truth(outcomes, ground_truth)

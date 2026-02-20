@@ -185,20 +185,15 @@ def _interactive_flow(
 
 def _fetch_kalshi() -> tuple[str, list[str], dict[str, int] | None]:
     """Prompt for a Kalshi ticker and fetch market data."""
-    from miniprophet.run.cli_config import load_cli_config
     from miniprophet.run.services import get_market_service
 
-    cli_config = load_cli_config()
     ticker = Prompt.ask("  [bold]Kalshi ticker[/bold]").strip()
     if not ticker:
         console.print("  [red]No ticker provided.[/red]")
         return "", [], None
 
     try:
-        service = get_market_service(
-            cli_config.get("default_market_service", "kalshi"),
-            api_base=cli_config.get("kalshi_api_base", ""),
-        )
+        service = get_market_service("kalshi")
         data = service.fetch(ticker)
     except Exception as exc:
         console.print(f"  [bold red]Failed to fetch market:[/bold red] {exc}")

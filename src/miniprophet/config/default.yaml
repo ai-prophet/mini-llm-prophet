@@ -37,9 +37,9 @@ agent:
   context_window: 6
 
 model:
-  model_name: "openai/gpt-4o-mini"
+  model_name: "google/gemini-3-flash-preview"
   model_kwargs:
-    temperature: 0.3
+    temperature: 0.9
   format_error_template: "Error: {error}. Please make a valid tool call."
   observation_template: "{output}"
 
@@ -48,7 +48,7 @@ environment:
   max_source_text_chars: 2000
 
 search:
-  search_class: "brave"
+  search_class: "perplexity"
   connect_timeout: 10
   total_timeout: 30
   max_retries: 3
