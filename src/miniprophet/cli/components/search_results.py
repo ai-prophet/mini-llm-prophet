@@ -15,8 +15,11 @@ from miniprophet.environment.source_board import Source
 console = get_console()
 
 
-def render_search_results_panel(
-    search_results: list[tuple[str, Source]], *, title: str = "Search results"
+def _render_search_results_panel(
+    search_results: list[tuple[str, Source]],
+    *,
+    title: str = "Search results",
+    max_source_display_chars: int = 200,
 ) -> Panel:
     """
     results: iterable of objects/dicts with fields:
@@ -47,7 +50,7 @@ def render_search_results_panel(
         url_text.no_wrap = False
 
         # Snippet line (tertiary; dim so it doesn't dominate)
-        snippet_text = Text(snippet, style="white")
+        snippet_text = Text(snippet[:max_source_display_chars], style="white")
         snippet_text.no_wrap = False
 
         # Small "meta" prefix (id)
@@ -88,35 +91,11 @@ def render_search_results_panel(
     )
 
 
-def print_search_observation(search_results: list[tuple[str, Source]]) -> None:
+def print_search_observation(
+    search_results: list[tuple[str, Source]], max_source_display_chars: int = 200
+) -> None:
     """Parse and display search results compactly, showing all sources."""
-    panel = render_search_results_panel(search_results)
+    panel = _render_search_results_panel(
+        search_results, max_source_display_chars=max_source_display_chars
+    )
     console.print(panel)
-
-
-if __name__ == "__main__":
-    search_results = [
-        (
-            "S1",
-            Source(
-                url="https://example.com", title="Example", snippet="This is an example source."
-            ),
-        ),
-        (
-            "S2",
-            Source(
-                url="https://example.com/2",
-                title="Example 2",
-                snippet="This is another example source.",
-            ),
-        ),
-        (
-            "S3",
-            Source(
-                url="https://example.com/3",
-                title="Example 3",
-                snippet="This is a third example source.",
-            ),
-        ),
-    ]
-    print_search_observation(search_results)

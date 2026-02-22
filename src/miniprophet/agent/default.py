@@ -34,6 +34,7 @@ class AgentConfig(BaseModel):
     max_outcomes: int = 20
     context_window: int = 6
     output_path: Path | None = None
+    show_current_time: bool = False
 
 
 class DefaultForecastAgent:

@@ -37,7 +37,7 @@ SEARCH_SCHEMA = {
 
 class SearchToolConfig(BaseModel):
     search_results_limit: int = 5
-    max_source_text_chars: int = 2000
+    max_source_display_chars: int = 2000
 
 
 class SearchForecastTool:
@@ -126,6 +126,6 @@ class SearchForecastTool:
 
         search_results = output.get("search_results", [])
         if not output.get("error") and search_results:
-            print_search_observation(search_results)
+            print_search_observation(search_results, self._config.max_source_display_chars)
         else:
             print_observation(output)

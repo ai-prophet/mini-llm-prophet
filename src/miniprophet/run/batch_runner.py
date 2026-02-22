@@ -155,7 +155,7 @@ def process_problem(
             board=board,
             search_limit=agent_search_limit,
             search_results_limit=env_cfg.get("search_results_limit", 5),
-            max_source_text_chars=env_cfg.get("max_source_text_chars", 2000),
+            max_source_display_chars=env_cfg.get("max_source_display_chars", 2000),
         )
         env = ForecastEnvironment(tools, board=board, **env_cfg)
 

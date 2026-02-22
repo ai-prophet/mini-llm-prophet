@@ -22,7 +22,7 @@ def create_default_tools(
     *,
     search_limit: int = 10,
     search_results_limit: int = 5,
-    max_source_text_chars: int = 2000,
+    max_source_display_chars: int = 2000,
 ) -> list[Tool]:
     """Build the standard set of forecast tools sharing a common board and source registry."""
     from miniprophet.tools.search_tool import SearchForecastTool, SearchToolConfig
@@ -32,7 +32,7 @@ def create_default_tools(
     source_registry: dict[str, Source] = {}
     search_config = SearchToolConfig(
         search_results_limit=search_results_limit,
-        max_source_text_chars=max_source_text_chars,
+        max_source_display_chars=max_source_display_chars,
     )
 
     return [
@@ -50,7 +50,7 @@ def create_default_tools(
 
 class ForecastEnvConfig(BaseModel):
     search_results_limit: int = 5
-    max_source_text_chars: int = 2000
+    max_source_display_chars: int = 2000
 
 
 class ForecastEnvironment:
