@@ -6,19 +6,18 @@ import json
 from pathlib import Path
 
 import typer
-from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
 from miniprophet import __version__
-from miniprophet.utils.log import logger  # noqa: F401 — triggers root logger setup
+from miniprophet.cli.utils import get_console
 from miniprophet.utils.serialize import UNSET, recursive_merge
 
 app = typer.Typer(
     name="prophet",
-    help="mini-llm-prophet: a minimal LLM forecasting agent.",
+    help=f"mini-llm-prophet (v{__version__}): a minimal LLM forecasting agent.",
     add_completion=False,
 )
-console = Console()
+console = get_console()
 
 
 @app.command()

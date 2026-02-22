@@ -27,7 +27,7 @@ def _display_current(title: str, outcomes: list[str], ground_truth: dict[str, in
         gt_str = ", ".join(f"{k}={v}" for k, v in ground_truth.items())
         table.add_row("Ground Truth", gt_str)
     else:
-        table.add_row("Ground Truth", "[dim](not set)[/dim]")
+        table.add_row("Ground Truth", "[dim](Optional: not set)[/dim]")
     console.print(
         Panel(table, title="[bold cyan]Forecast Parameters[/bold cyan]", border_style="cyan")
     )
