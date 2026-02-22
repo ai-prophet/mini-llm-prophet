@@ -1,21 +1,28 @@
-"""Rich-based TUI for interactively entering/editing forecast parameters."""
+"""Interactive forecast setup TUI component."""
 
 from __future__ import annotations
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-console = Console()
+from miniprophet.cli.utils import get_console
+
+console = get_console()
 
 
 def _display_current(title: str, outcomes: list[str], ground_truth: dict[str, int] | None) -> None:
     table = Table(show_header=False, expand=False, box=None, padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
-    table.add_row("Title", title or "[dim](not set)[/dim]")
-    table.add_row("Outcomes", ", ".join(outcomes) if outcomes else "[dim](not set)[/dim]")
+    table.add_row(
+        "Title",
+        title if title else "[dim](Empty: awaiting input...)[/dim]",
+    )
+    table.add_row(
+        "Outcomes",
+        ", ".join(outcomes) if outcomes else "[dim](Empty: awaiting input...)[/dim]",
+    )
     if ground_truth is not None:
         gt_str = ", ".join(f"{k}={v}" for k, v in ground_truth.items())
         table.add_row("Ground Truth", gt_str)
@@ -33,7 +40,7 @@ def _edit_outcomes(outcomes: list[str]) -> list[str]:
             for i, o in enumerate(outcomes):
                 console.print(f"  [bold]{i + 1}.[/bold] {o}")
         else:
-            console.print("  [dim](no outcomes yet)[/dim]")
+            console.print("  [dim](Empty: awaiting input...)[/dim]")
 
         console.print(
             "\n  [dim]Type an outcome to add, a number to delete, or press Enter to confirm.[/dim]"

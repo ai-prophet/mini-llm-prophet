@@ -40,6 +40,7 @@ GLOBAL_MODEL_STATS = GlobalModelStats()
 
 _MODEL_CLASS_MAPPING: dict[str, str] = {
     "openrouter": "miniprophet.models.openrouter.OpenRouterModel",
+    "litellm": "miniprophet.models.litellm.LitellmModel",
 }
 
 

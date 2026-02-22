@@ -6,14 +6,21 @@ import json
 import logging
 import traceback
 from pathlib import Path
+from typing import TypedDict
 
 from pydantic import BaseModel
 
 from miniprophet import ContextManager, Environment, Model, __version__
 from miniprophet.exceptions import InterruptAgentFlow, LimitsExceeded
-from miniprophet.utils import display
 from miniprophet.utils.metrics import evaluate_submission, validate_ground_truth
 from miniprophet.utils.serialize import recursive_merge
+
+
+class ForecastResult(TypedDict, total=False):
+    exit_status: str
+    submission: dict[str, float]
+    evaluation: dict[str, float]
+    board: list[dict]
 
 
 class AgentConfig(BaseModel):
@@ -74,6 +81,27 @@ class DefaultForecastAgent:
         )
 
     # ------------------------------------------------------------------
+    # Hook methods (no-ops; overridden by subclasses like CliForecastAgent)
+    # ------------------------------------------------------------------
+
+    def on_run_start(self, title: str, outcomes: str, config: AgentConfig) -> None:
+        pass
+
+    def on_step_start(
+        self, step: int, model_cost: float, search_cost: float, total_cost: float
+    ) -> None:
+        pass
+
+    def on_model_response(self, message: dict) -> None:
+        pass
+
+    def on_observation(self, action: dict, output: dict) -> None:
+        pass
+
+    def on_run_end(self, result: ForecastResult) -> None:
+        pass
+
+    # ------------------------------------------------------------------
     # Core loop
     # ------------------------------------------------------------------
 
@@ -82,7 +110,7 @@ class DefaultForecastAgent:
         title: str,
         outcomes: list[str],
         ground_truth: dict[str, int] | None = None,
-    ) -> dict:
+    ) -> ForecastResult:
         if len(outcomes) > self.config.max_outcomes:
             raise ValueError(
                 f"Too many outcomes ({len(outcomes)} > {self.config.max_outcomes}). "
@@ -110,13 +138,7 @@ class DefaultForecastAgent:
             ),
         )
 
-        display.print_run_header(
-            title,
-            outcomes_formatted,
-            self.config.step_limit,
-            self.config.cost_limit,
-            self.config.search_limit,
-        )
+        self.on_run_start(title, outcomes_formatted, self.config)
 
         while True:
             try:
@@ -131,28 +153,39 @@ class DefaultForecastAgent:
             if self.messages[-1].get("role") == "exit":
                 break
 
-        result = self.messages[-1].get("extra", {})
+        last_extra = self.messages[-1].get("extra", {})
+
+        result: ForecastResult = {
+            "exit_status": last_extra.get("exit_status", "unknown"),
+            "submission": last_extra.get("submission", {}),
+            "board": last_extra.get("board", []),
+        }
 
         if ground_truth is not None and result.get("submission"):
             evaluation = evaluate_submission(result["submission"], ground_truth)
             result["evaluation"] = evaluation
-            display.print_evaluation(evaluation)
 
-        display.print_run_footer(
-            result.get("exit_status", "unknown"),
-            self.n_calls,
-            self.n_searches,
-            self.model_cost,
-            self.search_cost,
-            self.total_cost,
-        )
+        self.on_run_end(result)
         return result
 
     def step(self) -> list[dict]:
+        # Strip stale board state before context management
+        self.messages = [m for m in self.messages if not m.get("extra", {}).get("is_board_state")]
+
         if self.context_manager is not None:
-            self.messages = self.context_manager.manage(
-                self.messages, step=self.n_calls, board_state=self.env.board.render()
+            self.messages = self.context_manager.manage(self.messages, step=self.n_calls)
+
+        # Inject fresh board state as invariant at position 2 (after system + user)
+        if hasattr(self.env, "board"):
+            self.messages.insert(
+                2,
+                {
+                    "role": "user",
+                    "content": self.env.board.render(),  # type: ignore
+                    "extra": {"is_board_state": True},
+                },
             )
+
         return self.execute_actions(self.query())
 
     def query(self) -> dict:
@@ -179,8 +212,8 @@ class DefaultForecastAgent:
         self.model_cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
 
-        display.print_step_header(self.n_calls, self.model_cost, self.search_cost, self.total_cost)
-        display.print_model_response(message)
+        self.on_step_start(self.n_calls, self.model_cost, self.search_cost, self.total_cost)
+        self.on_model_response(message)
         return message
 
     def execute_actions(self, message: dict) -> list[dict]:
@@ -196,8 +229,8 @@ class DefaultForecastAgent:
                 args = json.loads(raw) if isinstance(raw, str) else raw
                 query = args.get("query", "")
                 if query and hasattr(self.context_manager, "record_query"):
-                    self.context_manager.record_query(query)
-            display.print_observation(output)
+                    self.context_manager.record_query(query)  # type: ignore
+            self.on_observation(action, output)
         return self.add_messages(*self.model.format_observation_messages(message, outputs))
 
     # ------------------------------------------------------------------

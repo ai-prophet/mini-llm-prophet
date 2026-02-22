@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from miniprophet.utils import display
+import logging
+
+logger = logging.getLogger("miniprophet.agent.context")
 
 
 class SlidingWindowContextManager:
@@ -23,21 +25,28 @@ class SlidingWindowContextManager:
         self._total_truncated: int = 0
         self._past_queries: list[str] = []
 
+    @property
+    def total_truncated(self) -> int:
+        return self._total_truncated
+
     def record_query(self, query: str) -> None:
         """Called by the environment after each search to track query history."""
         self._past_queries.append(query)
 
-    def manage(
-        self, messages: list[dict], *, step: int, board_state: str = "", **kwargs
-    ) -> list[dict]:
+    def manage(self, messages: list[dict], *, step: int, **kwargs) -> list[dict]:
         if self.window_size <= 0:
             return messages
 
         preamble = messages[:2]
         body = messages[2:]
 
-        # Strip any previous truncation notice before counting
-        body = [m for m in body if not m.get("extra", {}).get("is_truncation_notice")]
+        # Strip synthetic messages before counting
+        body = [
+            m
+            for m in body
+            if not m.get("extra", {}).get("is_truncation_notice")
+            and not m.get("extra", {}).get("is_board_state")
+        ]
 
         if len(body) <= self.window_size:
             return preamble + body
@@ -48,10 +57,8 @@ class SlidingWindowContextManager:
 
         lines = [
             f"[Context truncated: {self._total_truncated} earlier messages have been "
-            f"omitted across this conversation. The source board and query history "
-            f"below reflect all accumulated state.]",
-            "",
-            board_state,
+            f"omitted across this conversation. The query history below tracks all "
+            f"searches issued so far.]",
         ]
 
         if self._past_queries:
@@ -67,5 +74,19 @@ class SlidingWindowContextManager:
             "extra": {"is_truncation_notice": True},
         }
 
-        display.print_context_truncation(self._total_truncated, self.window_size)
+        logger.debug(
+            "Context truncated: %d messages removed (window=%d)",
+            self._total_truncated,
+            self.window_size,
+        )
         return preamble + [truncation_msg] + kept
+
+    def display(self):
+        """Display the truncation info for CLI"""
+        from miniprophet.cli.utils import get_console
+
+        console = get_console()
+        console.print(
+            f"  [dim]Context truncated: {self._total_truncated} total messages "
+            f"(window size={self.window_size})[/dim]"
+        )

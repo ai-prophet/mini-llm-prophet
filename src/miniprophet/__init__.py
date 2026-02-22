@@ -3,10 +3,10 @@ mini-llm-prophet: A minimal LLM forecasting agent scaffolding.
 
 Provides:
 - Version numbering
-- Protocol definitions for core components (Model, Environment)
+- Protocol definitions for core components (Model, Environment, Tool)
 """
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 from pathlib import Path
 from typing import Any, Protocol
@@ -28,10 +28,24 @@ class Model(Protocol):
     def serialize(self) -> dict: ...
 
 
+class Tool(Protocol):
+    """Protocol for modular forecast tools."""
+
+    @property
+    def name(self) -> str: ...
+
+    def get_schema(self) -> dict: ...
+
+    def execute(self, args: dict) -> dict: ...
+
+    def display(self, output: dict) -> None: ...
+
+
 class Environment(Protocol):
     """Protocol for forecast environments."""
 
     config: Any
+    _tools: dict[str, Tool]
 
     def execute(self, action: dict) -> dict: ...
 
@@ -45,9 +59,12 @@ class ContextManager(Protocol):
 
     def manage(self, messages: list[dict], *, step: int, **kwargs) -> list[dict]: ...
 
+    def display(self) -> None: ...
+
 
 __all__ = [
     "Model",
+    "Tool",
     "Environment",
     "ContextManager",
     "package_dir",

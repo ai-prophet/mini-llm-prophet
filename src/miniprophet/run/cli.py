@@ -7,7 +7,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 
 from miniprophet import __version__
 from miniprophet.utils.log import logger  # noqa: F401 — triggers root logger setup
@@ -49,14 +49,15 @@ def main(
     ),
     output: Path | None = typer.Option(None, "--output", help="Path to save the trajectory JSON."),
     model_class: str | None = typer.Option(
-        None, "--model-class", help="Override model class (e.g. openrouter)."
+        None, "--model-class", help="Override model class (e.g. openrouter, litellm)."
     ),
 ) -> None:
     """Run the forecasting agent on a question with specified outcomes."""
+    from miniprophet.agent.cli_agent import CliForecastAgent
     from miniprophet.agent.context import SlidingWindowContextManager
-    from miniprophet.agent.default import DefaultForecastAgent
     from miniprophet.config import get_config_from_spec
-    from miniprophet.environment.forecast_env import ForecastEnvironment
+    from miniprophet.environment.forecast_env import ForecastEnvironment, create_default_tools
+    from miniprophet.environment.source_board import SourceBoard
     from miniprophet.models import get_model
     from miniprophet.search import get_search_tool
 
@@ -113,42 +114,56 @@ def main(
 
     config = recursive_merge(*configs)
 
-    # ---- Instantiate components ----
-    model = get_model(config=config.get("model", {}))
-    search_tool = get_search_tool(config=config.get("search", {}))
+    # ---- Forecast loop (re-enter setup in interactive mode) ----
+    while True:
+        model = get_model(config=config.get("model", {}))
+        search_backend = get_search_tool(config=config.get("search", {}))
 
-    env_kwargs = config.get("environment", {})
-    agent_search_limit = config.get("agent", {}).get("search_limit", 10)
-    env = ForecastEnvironment(
-        search_tool=search_tool,
-        outcomes=outcome_list,
-        search_limit=agent_search_limit,
-        **env_kwargs,
-    )
-
-    context_window = config.get("agent", {}).get("context_window", 6)
-    ctx_mgr = (
-        SlidingWindowContextManager(window_size=context_window) if context_window > 0 else None
-    )
-    agent = DefaultForecastAgent(
-        model=model, env=env, context_manager=ctx_mgr, **config.get("agent", {})
-    )
-
-    # ---- Run ----
-    result = agent.run(title=resolved_title, outcomes=outcome_list, ground_truth=ground_truth)
-
-    # ---- Print results ----
-    submission = result.get("submission", {})
-    if submission:
-        console.print("\n[bold]Forecast Results:[/bold]")
-        for outcome_name, prob in submission.items():
-            bar = "█" * int(prob * 30)
-            console.print(f"  {outcome_name:30s} {prob:.4f}  {bar}")
-    else:
-        console.print(
-            f"\n[bold yellow]Agent exited without submitting.[/bold yellow] "
-            f"Status: {result.get('exit_status', 'unknown')}"
+        env_cfg = config.get("environment", {})
+        agent_search_limit = config.get("agent", {}).get("search_limit", 10)
+        board = SourceBoard()
+        tools = create_default_tools(
+            search_tool=search_backend,
+            outcomes=outcome_list,
+            board=board,
+            search_limit=agent_search_limit,
+            search_results_limit=env_cfg.get("search_results_limit", 5),
+            max_source_text_chars=env_cfg.get("max_source_text_chars", 2000),
         )
+        env = ForecastEnvironment(tools, board=board, **env_cfg)
+
+        context_window = config.get("agent", {}).get("context_window", 6)
+        ctx_mgr = (
+            SlidingWindowContextManager(window_size=context_window) if context_window > 0 else None
+        )
+        agent = CliForecastAgent(
+            model=model, env=env, context_manager=ctx_mgr, **config.get("agent", {})
+        )
+
+        result = agent.run(title=resolved_title, outcomes=outcome_list, ground_truth=ground_truth)
+
+        if not result.get("submission"):
+            console.print(
+                f"\n[bold yellow]Agent exited without submitting.[/bold yellow] "
+                f"Status: {result.get('exit_status', 'unknown')}"
+            )
+
+        if not interactive:
+            break
+
+        console.print()
+        if not Confirm.ask("  [bold]Run another forecast?[/bold]", default=False):
+            break
+
+        resolved_title, outcome_list, ground_truth = _interactive_flow(
+            prefill_title=resolved_title,
+            prefill_outcomes=",".join(outcome_list),
+            prefill_ground_truth=ground_truth,
+        )
+
+        if len(outcome_list) < 2:
+            console.print("[bold red]Error:[/bold red] At least 2 outcomes are required.")
+            break
 
 
 def _interactive_flow(
@@ -157,7 +172,7 @@ def _interactive_flow(
     prefill_ground_truth: dict[str, int] | None,
 ) -> tuple[str, list[str], dict[str, int] | None]:
     """Run the interactive TUI flow: manual input or Kalshi ticker."""
-    from miniprophet.run.tui import prompt_forecast_params
+    from miniprophet.cli.components.forecast_setup import prompt_forecast_params
 
     console.print()
     choice = Prompt.ask(
