@@ -86,14 +86,7 @@ class PerplexitySearchTool:
             url = item.get("url", "")
             snippet = item.get("snippet", "")
             if url and snippet:
-                sources.append(
-                    Source(
-                        url=url,
-                        title=item.get("title", ""),
-                        snippet=snippet[:200],
-                        text=snippet,
-                    )
-                )
+                sources.append(Source(url=url, title=item.get("title", ""), snippet=snippet))
 
         logger.info(f"Perplexity search '{query}': {len(sources)} source(s)")
         # For perplexity, the cost is fixed for each request, regardless of the number of sources returned

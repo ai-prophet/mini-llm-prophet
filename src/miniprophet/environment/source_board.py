@@ -22,7 +22,6 @@ class Source:
     url: str
     title: str
     snippet: str
-    text: str
 
 
 @dataclass
@@ -72,22 +71,23 @@ class SourceBoard:
         raise KeyError(f"No board entry with id {board_id}")
 
     def render(self) -> str:
-        """Render the board as a human-readable string for the model."""
+        """Render the board as an XML-structured string for the model."""
         if not self._entries:
-            return "--- Source Board (empty) ---"
-        lines = [f"--- Source Board ({len(self._entries)} entries) ---"]
+            return "<source_board>\n(empty)\n</source_board>"
+        lines = [f'<source_board count="{len(self._entries)}">']
         for entry in self._entries:
-            block = (
-                f'[#{entry.id}] "{entry.source.title}" ({entry.source.url})\n'
-                f"      Note: {entry.note}"
+            lines.append(
+                f'<source board_id="{entry.id}" title="{entry.source.title}" url="{entry.source.url}">'
             )
+            lines.append(f"Note: {entry.note}")
             if entry.reaction:
                 parts = [
                     f"{outcome} [{REACTION_COMPACT.get(s, '?')}]"
                     for outcome, s in entry.reaction.items()
                 ]
-                block += f"\n      Reactions: {'  '.join(parts)}"
-            lines.append(block)
+                lines.append(f"Reactions: {'  '.join(parts)}")
+            lines.append("</source>")
+        lines.append("</source_board>")
         return "\n".join(lines)
 
     def serialize(self) -> list[dict]:

@@ -29,7 +29,7 @@ Two model classes are supported: **OpenRouter** (default) and **LiteLLM**. Use `
 ### 3. Run
 
 ```bash
-prophet --title "Which team will win the NBA championship in 2026?" \
+prophet run --title "Which team will win the NBA championship in 2026?" \
   --outcomes "Bucks,Warriors,Nets,Suns,Celtics" \
   --model minimax/minimax-m2.5
 ```
@@ -37,7 +37,7 @@ prophet --title "Which team will win the NBA championship in 2026?" \
 **Optionally**, if you want to perform evaluation, you can pass the ground truth as a JSON string:
 
 ```bash
-prophet \
+prophet run \
   --title "Which team will win the NBA championship in 2025?" \
   --outcomes "Thunder,Warriors,Nets,Suns,Celtics" \
   --ground-truth '{"Thunder": 1, "Warriors": 0, "Nets": 0, "Suns": 0, "Celtics": 0}'
@@ -46,12 +46,29 @@ prophet \
 Or use **interactive mode** to set up via a TUI (with optional Kalshi market import):
 
 ```bash
-prophet -i \
+prophet run -i \
   --model minimax/minimax-m2.5
 ```
 
+### 4. Batch Mode
+
+Run multiple forecasting problems from a `.jsonl` file:
+
+```bash
+prophet batch -f problems.jsonl -o ./batch_output -w 4 --model openai/gpt-4o
+```
+
+Each line in the JSONL file is a forecasting problem:
+
+```json
+{"title": "Will X happen?", "outcomes": ["Yes", "No"], "ground_truth": {"Yes": 1, "No": 0}, "run_id": "my_problem"}
+```
+
+`ground_truth` and `run_id` are optional. Output goes to a meta-directory with per-run artifacts and a `summary.json`.
+
 ## CLI Options
 
+### `prophet run` (single forecast)
 
 | Flag             | Short | Description                                                     |
 | ---------------- | ----- | --------------------------------------------------------------- |
@@ -64,17 +81,29 @@ prophet -i \
 | `--search-limit` |       | Max search queries (default: 10)                                |
 | `--step-limit`   |       | Max agent steps (default: 30)                                   |
 | `--config`       | `-c`  | Config files or `key=value` overrides                           |
-| `--output`       |       | Save trajectory JSON to this path                               |
+| `--output`       |       | Output directory for run artifacts (info.json + trajectory.json) |
 | `--model-class`  |       | Override model class (`openrouter` or `litellm`)                |
 
+### `prophet batch` (batch forecast)
+
+| Flag               | Short | Description                                       |
+| ------------------ | ----- | ------------------------------------------------- |
+| `--input`          | `-f`  | Path to `.jsonl` input file (required)             |
+| `--output`         | `-o`  | Output meta-directory (required)                   |
+| `--workers`        | `-w`  | Number of parallel workers (default: 1)            |
+| `--max-cost`       |       | Total cost budget across all runs (0 = unlimited)  |
+| `--max-cost-per-run` |     | Per-run cost limit (overrides agent config)        |
+| `--model`          | `-m`  | Model name override                                |
+| `--model-class`    |       | Model class override                               |
+| `--config`         | `-c`  | Config files or `key=value` overrides              |
 
 ## Configuration
 
 Default config is in `src/miniprophet/config/default.yaml`. Override with `-c`:
 
 ```bash
-prophet -t "..." -o "..." -c model.model_kwargs.temperature=0.5
-prophet -t "..." -o "..." -c search.search_class=perplexity
+prophet run -t "..." -o "..." -c model.model_kwargs.temperature=0.5
+prophet run -t "..." -o "..." -c search.search_class=perplexity
 ```
 
 Multiple `-c` flags are merged in order (later values win).
@@ -95,8 +124,9 @@ You can see the default context management strategy in `src/miniprophet/agent/co
 
 ### Key Components
 
-- **`DefaultForecastAgent`** -- the core agent loop (no display dependencies)
+- **`DefaultForecastAgent`** -- the core agent loop (no display dependencies), with built-in `TrajectoryRecorder` for per-step observability
 - **`CliForecastAgent`** -- CLI-aware agent that adds Rich display via hook overrides
+- **`BatchForecastAgent`** -- batch-mode agent with rate-limit coordination and progress hooks
 - **`ForecastEnvironment`** -- thin dispatcher that delegates to registered `Tool` instances
 - **`tools/`** -- modular tool package (`SearchForecastTool`, `AddSourceTool`, `EditNoteTool`, `SubmitTool`)
 - **`SlidingWindowContextManager`** -- stateful context truncation with query history tracking
@@ -116,7 +146,7 @@ The agent tracks three cost categories:
 Pass `--ground-truth / -g` to evaluate the agent's forecast against known outcomes:
 
 ```bash
-prophet -t "Will it rain tomorrow?" -o "Yes,No" -g '{"Yes": 1, "No": 0}'
+prophet run -t "Will it rain tomorrow?" -o "Yes,No" -g '{"Yes": 1, "No": 0}'
 ```
 
 Computes Brier Score (and any registered custom metrics) and includes results in both the CLI output and the trajectory file.
@@ -193,19 +223,3 @@ Implement the `MarketService` protocol to add new prediction market integrations
 pip install -e ".[dev]"
 pre-commit install
 ```
-
-
-
-Implement the `Model` protocol defined in `miniprophet/__init__.py`.
-
-### Market Services
-
-Implement the `MarketService` protocol to add new prediction market integrations (Kalshi is built-in).
-
-## Development
-
-```bash
-pip install -e ".[dev]"
-pre-commit install
-```
-

@@ -144,11 +144,15 @@ class LitellmModel:
 
         results: list[dict] = []
         for action, output in zip(actions, padded):
-            content = self.config.observation_template.format(output=output.get("output", ""))
+            raw = output.get("output", "")
+            if output.get("error"):
+                content = f"<error>\n{raw}\n</error>"
+            else:
+                content = f"<output>\n{raw}\n</output>"
             msg: dict[str, Any] = {
                 "content": content,
                 "extra": {
-                    "raw_output": output.get("output", ""),
+                    "raw_output": raw,
                     "error": output.get("error", False),
                     "search_cost": output.get("search_cost", 0.0),
                     "timestamp": time.time(),

@@ -48,7 +48,6 @@ class BraveSearchTool:
                         url=link["url"],
                         title=link["title"],
                         snippet=link["snippet"],
-                        text=text[: self._max_extract_chars],
                     )
                 )
         logger.info(f"Search '{query}': {len(sources)}/{len(links)} sources extracted")

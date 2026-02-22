@@ -1,0 +1,141 @@
+"""Rich progress display for batch forecasting runs."""
+
+from __future__ import annotations
+
+import collections
+import time
+from datetime import timedelta
+from pathlib import Path
+from threading import Lock
+
+from rich.console import Group
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TaskID,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+
+
+def _shorten(s: str, max_len: int, *, left: bool = False) -> str:
+    if len(s) <= max_len:
+        return f"{s:<{max_len}}"
+    if left:
+        return f"{'...' + s[-max_len + 3 :]:<{max_len}}"
+    return f"{s[: max_len - 3] + '...':<{max_len}}"
+
+
+class BatchProgressManager:
+    """Thread-safe progress tracker for batch forecast runs.
+
+    Renders an overall progress bar, a per-instance spinner table,
+    and an exit-status summary table via Rich Live.
+    """
+
+    def __init__(self, total: int, report_path: Path | None = None) -> None:
+        self._lock = Lock()
+        self._start_time = time.time()
+        self._total = total
+        self._total_cost = 0.0
+        self._report_path = report_path
+
+        self._instances_by_status: dict[str, list[str]] = collections.defaultdict(list)
+        self._spinner_tasks: dict[str, TaskID] = {}
+
+        self._main_bar = Progress(
+            SpinnerColumn(spinner_name="dots2"),
+            TextColumn("[progress.description]{task.description} (${task.fields[total_cost]})"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TextColumn("[cyan]{task.fields[eta]}[/cyan]"),
+            speed_estimate_period=60 * 5,
+        )
+        self._task_bar = Progress(
+            SpinnerColumn(spinner_name="dots2"),
+            TextColumn("{task.fields[run_id]}"),
+            TextColumn("{task.fields[status]}"),
+            TimeElapsedColumn(),
+        )
+
+        self._main_task_id = self._main_bar.add_task(
+            "[cyan]Batch Progress", total=total, total_cost="0.00", eta=""
+        )
+
+        self._status_table = Table()
+        self.render_group = Group(self._main_bar, self._status_table, self._task_bar)
+
+    @property
+    def n_completed(self) -> int:
+        return sum(len(v) for v in self._instances_by_status.values())
+
+    def _eta_text(self) -> str:
+        n = self.n_completed
+        if n == 0:
+            return ""
+        elapsed = time.time() - self._start_time
+        remaining = elapsed / n * (self._total - n)
+        return f"eta: {timedelta(seconds=int(remaining))}"
+
+    def _refresh_status_table(self) -> None:
+        t = Table()
+        t.add_column("Exit Status")
+        t.add_column("Count", justify="right", style="bold cyan")
+        t.add_column("Recent runs")
+        t.show_header = True
+        with self._lock:
+            for status, runs in sorted(
+                self._instances_by_status.items(), key=lambda x: len(x[1]), reverse=True
+            ):
+                t.add_row(status, str(len(runs)), _shorten(", ".join(reversed(runs)), 55))
+        self.render_group.renderables[1] = t
+
+    def _update_cost(self, cost_delta: float = 0.0) -> None:
+        with self._lock:
+            self._total_cost += cost_delta
+            self._main_bar.update(
+                self._main_task_id,
+                total_cost=f"{self._total_cost:.2f}",
+                eta=self._eta_text(),
+            )
+
+    def on_run_start(self, run_id: str) -> None:
+        with self._lock:
+            self._spinner_tasks[run_id] = self._task_bar.add_task(
+                description=f"Run {run_id}",
+                status="initializing",
+                total=None,
+                run_id=_shorten(run_id, 25, left=True),
+            )
+
+    def update_run_status(self, run_id: str, message: str, cost_delta: float = 0.0) -> None:
+        with self._lock:
+            if run_id in self._spinner_tasks:
+                self._task_bar.update(
+                    self._spinner_tasks[run_id],
+                    status=_shorten(message, 30),
+                    run_id=_shorten(run_id, 25, left=True),
+                )
+        if cost_delta:
+            self._update_cost(cost_delta)
+
+    def on_run_end(self, run_id: str, exit_status: str | None) -> None:
+        with self._lock:
+            self._instances_by_status[exit_status or "unknown"].append(run_id)
+            if run_id in self._spinner_tasks:
+                try:
+                    self._task_bar.remove_task(self._spinner_tasks[run_id])
+                except KeyError:
+                    pass
+            self._main_bar.update(TaskID(0), advance=1, eta=self._eta_text())
+        self._refresh_status_table()
+        self._update_cost()
+
+    def on_uncaught_exception(self, run_id: str, exc: Exception) -> None:
+        self.on_run_end(run_id, f"Uncaught {type(exc).__name__}")

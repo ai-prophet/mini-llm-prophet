@@ -13,14 +13,14 @@ from miniprophet.cli.utils import get_console
 from miniprophet.utils.serialize import UNSET, recursive_merge
 
 app = typer.Typer(
-    name="prophet",
-    help=f"mini-llm-prophet (v{__version__}): a minimal LLM forecasting agent.",
+    name="run",
+    help="Run a single forecast (interactive or CLI args).",
     add_completion=False,
 )
 console = get_console()
 
 
-@app.command()
+@app.callback(invoke_without_command=True)
 def main(
     title: str | None = typer.Option(None, "--title", "-t", help="The forecasting question."),
     outcomes: str | None = typer.Option(
@@ -46,7 +46,9 @@ def main(
     config_spec: list[str] | None = typer.Option(
         None, "--config", "-c", help="Config file(s) or key=value overrides."
     ),
-    output: Path | None = typer.Option(None, "--output", help="Path to save the trajectory JSON."),
+    output: Path | None = typer.Option(
+        None, "--output", help="Output directory for run artifacts (info.json + trajectory.json)."
+    ),
     model_class: str | None = typer.Option(
         None, "--model-class", help="Override model class (e.g. openrouter, litellm)."
     ),

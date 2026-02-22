@@ -104,24 +104,28 @@ class SearchForecastTool:
         if not self.last_search_results:
             body = "No sources found for this query."
         else:
-            lines: list[str] = [f"Found {len(self.last_search_results)} source(s):\n"]
+            lines: list[str] = [f'<search_results count="{len(self.last_search_results)}">']
             for sid, src in self.last_search_results:
-                text_preview = src.text[: self._config.max_source_text_chars]
                 lines.append(
-                    f'[{sid}] "{src.title}" ({src.url})\n'
-                    f"    Snippet: {src.snippet}\n"
-                    f"    Content: {text_preview}\n"
+                    f'<result id="{sid}" title="{src.title}" url="{src.url}">\n'
+                    f"Snippet: {src.snippet}\n"
+                    f"</result>"
                 )
+            lines.append("</search_results>")
             body = "\n".join(lines)
 
-        return {"output": body, "search_cost": result.cost}
+        return {
+            "output": body,
+            "search_cost": result.cost,
+            "search_results": self.last_search_results,
+        }
 
     def display(self, output: dict) -> None:
         from miniprophet.cli.components.observation import print_observation
         from miniprophet.cli.components.search_results import print_search_observation
 
-        raw = output.get("output", "")
-        if not output.get("error") and raw.startswith("Found ") and "source(s):" in raw[:40]:
-            print_search_observation(raw)
+        search_results = output.get("search_results", [])
+        if not output.get("error") and search_results:
+            print_search_observation(search_results)
         else:
             print_observation(output)

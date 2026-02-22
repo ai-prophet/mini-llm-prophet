@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import traceback
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypedDict
 
 from pydantic import BaseModel
 
 from miniprophet import ContextManager, Environment, Model, __version__
+from miniprophet.agent.trajectory import TrajectoryRecorder
 from miniprophet.exceptions import InterruptAgentFlow, LimitsExceeded
 from miniprophet.utils.metrics import evaluate_submission, validate_ground_truth
 from miniprophet.utils.serialize import recursive_merge
@@ -54,6 +56,7 @@ class DefaultForecastAgent:
         self.search_cost = 0.0
         self.n_searches = 0
         self.n_calls = 0
+        self._trajectory = TrajectoryRecorder()
 
     @property
     def total_cost(self) -> float:
@@ -120,6 +123,11 @@ class DefaultForecastAgent:
             validate_ground_truth(outcomes, ground_truth)
 
         outcomes_formatted = ", ".join(outcomes)
+        current_time = (
+            datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S %Z")
+            if self.config.show_current_time
+            else "Not Available"
+        )
         self.messages = []
         self.add_messages(
             self.model.format_message(
@@ -134,6 +142,7 @@ class DefaultForecastAgent:
                     self.config.instance_template,
                     title=title,
                     outcomes_formatted=outcomes_formatted,
+                    current_time=current_time,
                 ),
             ),
         )
@@ -180,7 +189,7 @@ class DefaultForecastAgent:
             self.messages.insert(
                 2,
                 {
-                    "role": "user",
+                    "role": "system",
                     "content": self.env.board.render(),  # type: ignore
                     "extra": {"is_board_state": True},
                 },
@@ -207,10 +216,13 @@ class DefaultForecastAgent:
             )
 
         self.n_calls += 1
+        # Snapshot the messages the model will actually see (post-truncation, post-board inject)
+        input_snapshot = list(self.messages)
         tools = self.env.get_tool_schemas()
         message = self.model.query(self.messages, tools)
         self.model_cost += message.get("extra", {}).get("cost", 0.0)
         self.add_messages(message)
+        self._trajectory.record_step(input_snapshot, message)
 
         self.on_step_start(self.n_calls, self.model_cost, self.search_cost, self.total_cost)
         self.on_model_response(message)
@@ -237,37 +249,54 @@ class DefaultForecastAgent:
     # Serialization / save
     # ------------------------------------------------------------------
 
-    def serialize(self, *extra_dicts: dict) -> dict:
+    def serialize_info(self, *extra_dicts: dict) -> dict:
+        """Serialize run metadata (config, costs, status, submission, evaluation)."""
         last_message = self.messages[-1] if self.messages else {}
         last_extra = last_message.get("extra", {})
         agent_data = {
-            "info": {
-                "cost_stats": {
-                    "model_cost": self.model_cost,
-                    "search_cost": self.search_cost,
-                    "total_cost": self.total_cost,
-                    "n_api_calls": self.n_calls,
-                    "n_searches": self.n_searches,
-                },
-                "config": {
-                    "agent": self.config.model_dump(mode="json"),
-                    "agent_type": f"{self.__class__.__module__}.{self.__class__.__name__}",
-                },
-                "version": __version__,
-                "exit_status": last_extra.get("exit_status", ""),
-                "submission": last_extra.get("submission", ""),
-                "evaluation": last_extra.get("evaluation", {}),
+            "cost_stats": {
+                "model_cost": self.model_cost,
+                "search_cost": self.search_cost,
+                "total_cost": self.total_cost,
+                "n_api_calls": self.n_calls,
+                "n_searches": self.n_searches,
             },
-            "messages": self.messages,
-            "trajectory_format": "mini-llm-prophet-1.0",
+            "config": {
+                "agent": self.config.model_dump(mode="json"),
+                "agent_type": f"{self.__class__.__module__}.{self.__class__.__name__}",
+            },
+            "version": __version__,
+            "exit_status": last_extra.get("exit_status", ""),
+            "submission": last_extra.get("submission", ""),
+            "evaluation": last_extra.get("evaluation", {}),
         }
-        return recursive_merge(
-            agent_data, self.model.serialize(), self.env.serialize(), *extra_dicts
-        )
+        model_info = self.model.serialize().get("info", {})
+        env_info = self.env.serialize().get("info", {})
+        extra_merged = recursive_merge(*extra_dicts) if extra_dicts else {}
+        return recursive_merge(agent_data, model_info, env_info, extra_merged)
+
+    def serialize_trajectory(self) -> dict:
+        """Serialize the full trajectory (message pool + per-step indices)."""
+        traj = self._trajectory.serialize()
+        traj["trajectory_format"] = f"mini-llm-prophet-v{__version__}"
+        return traj
+
+    def serialize(self, *extra_dicts: dict) -> dict:
+        """Serialize both info and trajectory into a single dict (legacy compat)."""
+        return {
+            "info": self.serialize_info(*extra_dicts),
+            "trajectory": self.serialize_trajectory(),
+        }
 
     def save(self, path: Path | None, *extra_dicts: dict) -> dict:
+        """Save run artifacts to a directory (info.json + trajectory.json).
+
+        ``path`` is treated as a directory. If None, serialization is
+        still performed but nothing is written to disk.
+        """
         data = self.serialize(*extra_dicts)
         if path:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2))
+            path.mkdir(parents=True, exist_ok=True)
+            (path / "info.json").write_text(json.dumps(data["info"], indent=2))
+            (path / "trajectory.json").write_text(json.dumps(data["trajectory"], indent=2))
         return data

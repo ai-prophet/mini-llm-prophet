@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.1.3
+
+### Major: Agent trajectory observability
+
+Agent runs now record full per-step input/output trajectories via a `TrajectoryRecorder`. Each message is stored once in a global pool and referenced by key, allowing exact reconstruction of what the LLM saw at every step -- even when the context manager truncates or replaces messages between steps.
+
+Serialization output has changed from a single JSON file to a **directory** containing:
+- `info.json` -- config, cost stats, version, exit status, submission, evaluation
+- `trajectory.json` -- message pool + per-step input/output indices
+
+The `--output` CLI option now points to a directory instead of a file.
+
+### Improved: XML-tagged prompt format
+
+Structured data in prompts and tool outputs now uses XML tags for clearer parsing by LLMs:
+- Source board: `<source_board>` / `<source>` tags
+- Tool output: `<output>` / `<error>` tags
+- Search results: `<search_results>` / `<result>` tags
+- Instance template: `<forecast_problem>` tag for the problem definition
+
+Instruction sections (Strategy, Guidelines) remain as markdown lists.
+
+### Major: Batch agent running mode
+
+New `prophet batch` CLI command for running multiple forecasting problems in parallel:
+- Input: `.jsonl` file with `title`, `outcomes`, optional `ground_truth` and `run_id` per line
+- Output: meta-directory with per-run artifacts and a `summary.json` with status, costs, submissions, and evaluations
+- Parallel execution via `--workers N` with a queue-based scheduler
+- Global `RateLimitCoordinator`: when any worker hits a rate limit, all workers pause for a backoff period
+- Automatic retry (up to 3 attempts) for rate-limited runs; permanent failures are recorded immediately
+- Total cost budget (`--max-cost`) and per-run cost limit (`--max-cost-per-run`)
+- Rich live progress display with overall progress bar, per-worker status, and exit status summary table
+
+### CLI restructured
+
+The CLI is now organized as sub-commands under a root `prophet` app:
+- `prophet run` -- single forecast run (previously the default command)
+- `prophet batch` -- batch forecasting from JSONL
+
 ## v0.1.2
 
 ### New: LiteLLM model support
