@@ -6,6 +6,10 @@
 
 A minimal LLM forecasting agent scaffolding. Inspired by [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent).
 
+<p align="left">
+  <img src="./assets/mini-llm-prophet-loop.svg" alt="mini-llm-prophet loop" style="height:100%"/>
+</p>
+
 ## Quick Start
 
 ### 1. Install
