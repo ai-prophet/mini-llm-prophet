@@ -11,6 +11,7 @@ import threading
 
 from miniprophet import ContextManager, Environment, Model
 from miniprophet.agent.default import AgentConfig, DefaultForecastAgent
+from miniprophet.run.batch_progress import BatchProgressManager
 
 logger = logging.getLogger("miniprophet.agent.batch")
 
@@ -52,7 +53,7 @@ class BatchForecastAgent(DefaultForecastAgent):
         config_class: type = AgentConfig,
         run_id: str = "",
         coordinator: RateLimitCoordinator | None = None,
-        progress_manager: object | None = None,
+        progress_manager: BatchProgressManager | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -65,12 +66,22 @@ class BatchForecastAgent(DefaultForecastAgent):
         self.run_id = run_id
         self._coordinator = coordinator
         self._progress = progress_manager
+        # storing the previous cost
+        self._prev_cost = 0.0
 
     def step(self) -> list[dict]:
         if self._coordinator is not None:
             self._coordinator.wait_if_paused()
+
+        res = super().step()
+
+        cost_delta = self.total_cost - self._prev_cost
+        self._prev_cost = self.total_cost
+
         if self._progress is not None:
             self._progress.update_run_status(
-                self.run_id, f"Step {self.n_calls + 1:3d} (${self.total_cost:.2f})"
+                self.run_id,
+                f"Step {self.n_calls + 1} (${self.total_cost:.2f}/{self.config.cost_limit:.2f})",
+                cost_delta=cost_delta,
             )
-        return super().step()
+        return res

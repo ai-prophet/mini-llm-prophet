@@ -9,6 +9,17 @@ or replaces messages between steps.
 
 from __future__ import annotations
 
+from collections import Counter
+
+# We use different prefixes for different message roles to make the trajectory easier to read.
+TRAJ_ROLE_MAPPING = {
+    "system": "S",
+    "user": "U",
+    "assistant": "A",
+    "tool": "T",
+    "other": "O",
+}
+
 
 class TrajectoryRecorder:
     """Records per-step input/output message references into a global pool.
@@ -19,6 +30,7 @@ class TrajectoryRecorder:
 
     def __init__(self) -> None:
         self._pool: list[dict] = []
+        self._role_counts: Counter[str] = Counter()
         self._identity_to_key: dict[int, str] = {}
         self._steps: list[dict] = []
 
@@ -26,13 +38,20 @@ class TrajectoryRecorder:
     def n_steps(self) -> int:
         return len(self._steps)
 
+    def _derive_and_increment_key(self, role: str) -> str:
+        if role not in TRAJ_ROLE_MAPPING:
+            role = "other"
+        key = f"{TRAJ_ROLE_MAPPING[role]}{self._role_counts[role]}"
+        self._role_counts[role] += 1
+        return key
+
     def register(self, *messages: dict) -> list[str]:
         """Add messages to the pool if not already present. Returns their keys."""
         keys: list[str] = []
         for msg in messages:
             obj_id = id(msg)
             if obj_id not in self._identity_to_key:
-                key = f"m{len(self._pool)}"
+                key = self._derive_and_increment_key(msg["role"])
                 self._identity_to_key[obj_id] = key
                 self._pool.append(msg)
             keys.append(self._identity_to_key[obj_id])
@@ -53,14 +72,14 @@ class TrajectoryRecorder:
         """Return the trajectory in a format suitable for JSON serialization.
 
         Returns a dict with:
-        - ``messages``: list of ``{"key": "m0", "message": {...}}`` entries
-        - ``steps``: list of ``{"input": ["m0", ...], "output": "m3"}`` entries
+        - ``messages``: list of ``{"key": "S0", "message": {...}}`` entries
+        - ``steps``: list of ``{"input": ["S0", ...], "output": "A1"}`` entries
         """
         messages = []
-        for i, msg in enumerate(self._pool):
+        for msg in self._pool:
             messages.append(
                 {
-                    "key": f"m{i}",
+                    "key": self._identity_to_key[id(msg)],
                     "message": msg,
                 }
             )

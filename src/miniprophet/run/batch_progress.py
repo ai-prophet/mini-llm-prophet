@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import collections
 import time
-from datetime import timedelta
 from pathlib import Path
 from threading import Lock
 
@@ -54,7 +53,6 @@ class BatchProgressManager:
             MofNCompleteColumn(),
             TaskProgressColumn(),
             TimeElapsedColumn(),
-            TextColumn("[cyan]{task.fields[eta]}[/cyan]"),
             speed_estimate_period=60 * 5,
         )
         self._task_bar = Progress(
@@ -65,7 +63,7 @@ class BatchProgressManager:
         )
 
         self._main_task_id = self._main_bar.add_task(
-            "[cyan]Batch Progress", total=total, total_cost="0.00", eta=""
+            "[cyan]Batch Progress", total=total, total_cost="0.00"
         )
 
         self._status_table = Table()
@@ -74,14 +72,6 @@ class BatchProgressManager:
     @property
     def n_completed(self) -> int:
         return sum(len(v) for v in self._instances_by_status.values())
-
-    def _eta_text(self) -> str:
-        n = self.n_completed
-        if n == 0:
-            return ""
-        elapsed = time.time() - self._start_time
-        remaining = elapsed / n * (self._total - n)
-        return f"eta: {timedelta(seconds=int(remaining))}"
 
     def _refresh_status_table(self) -> None:
         t = Table()
@@ -102,7 +92,6 @@ class BatchProgressManager:
             self._main_bar.update(
                 self._main_task_id,
                 total_cost=f"{self._total_cost:.2f}",
-                eta=self._eta_text(),
             )
 
     def on_run_start(self, run_id: str) -> None:
@@ -133,7 +122,7 @@ class BatchProgressManager:
                     self._task_bar.remove_task(self._spinner_tasks[run_id])
                 except KeyError:
                     pass
-            self._main_bar.update(TaskID(0), advance=1, eta=self._eta_text())
+            self._main_bar.update(TaskID(0), advance=1)
         self._refresh_status_table()
         self._update_cost()
 
