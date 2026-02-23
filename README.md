@@ -32,7 +32,7 @@ Two model classes are supported: **OpenRouter** (default) and **LiteLLM**. Use `
 prophet run --title "Which team will win the NBA championship in 2026?" \
   --outcomes "Bucks,Warriors,Nets,Suns,Celtics" \
   --model-class litellm \
-  --model google/gemini-3-flash-preview
+  --model gemini/gemini-3-flash-preview
 ```
 
 **Optionally**, if you want to perform evaluation, you can pass the ground truth as a JSON string:
