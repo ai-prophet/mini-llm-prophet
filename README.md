@@ -31,7 +31,8 @@ Two model classes are supported: **OpenRouter** (default) and **LiteLLM**. Use `
 ```bash
 prophet run --title "Which team will win the NBA championship in 2026?" \
   --outcomes "Bucks,Warriors,Nets,Suns,Celtics" \
-  --model minimax/minimax-m2.5
+  --model-class litellm \
+  --model google/gemini-3-flash-preview
 ```
 
 **Optionally**, if you want to perform evaluation, you can pass the ground truth as a JSON string:
@@ -47,7 +48,8 @@ Or use **interactive mode** to set up via a TUI (with optional Kalshi market imp
 
 ```bash
 prophet run -i \
-  --model minimax/minimax-m2.5
+  --model-class litellm \
+  --model gemini/gemini-3-flash-preview
 ```
 
 ### 4. Batch Mode
