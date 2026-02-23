@@ -41,6 +41,7 @@ agent:
   show_current_time: false
 
 model:
+  model_class: "litellm"
   model_name: "google/gemini-3-flash-preview"
   model_kwargs:
     temperature: 0.9

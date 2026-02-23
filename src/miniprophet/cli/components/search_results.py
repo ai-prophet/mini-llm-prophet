@@ -51,6 +51,9 @@ def _render_search_results_panel(
 
         # Snippet line (tertiary; dim so it doesn't dominate)
         snippet_text = Text(snippet[:max_source_display_chars], style="white")
+        extra_chars = len(snippet) - max_source_display_chars
+        if extra_chars > 0:
+            snippet_text += Text(f" ...{extra_chars} characters omitted", style="dim italic")
         snippet_text.no_wrap = False
 
         # Small "meta" prefix (id)
@@ -60,8 +63,12 @@ def _render_search_results_panel(
             meta.append("  ")
 
         # Build the per-result content group
+        # Combine meta and title on the same line
+        first_line = Text()
+        first_line.append_text(meta)
+        first_line.append_text(title_text)
         body = Group(
-            Group(meta, title_text),
+            first_line,
             url_text,
             snippet_text,
         )

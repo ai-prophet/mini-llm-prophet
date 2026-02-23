@@ -16,7 +16,6 @@ class SlidingWindowContextManager:
     When the message body exceeds `window_size`, older messages are discarded
     and replaced by a single synthetic summary that includes:
       - The cumulative count of all messages ever truncated
-      - The current source board state (the "invariant")
       - A log of all search queries issued so far (to avoid repeats)
     """
 
@@ -58,7 +57,7 @@ class SlidingWindowContextManager:
         lines = [
             f"[Context truncated: {self._total_truncated} earlier messages have been "
             f"omitted across this conversation. The query history below tracks all "
-            f"searches issued so far.]",
+            f"searches you've issued so far.]",
         ]
 
         if self._past_queries:

@@ -84,10 +84,7 @@ class DefaultForecastAgent:
             )
         )
 
-    # ------------------------------------------------------------------
     # Hook methods (no-ops; overridden by subclasses like CliForecastAgent)
-    # ------------------------------------------------------------------
-
     def on_run_start(self, title: str, outcomes: str, config: AgentConfig) -> None:
         pass
 
@@ -105,10 +102,7 @@ class DefaultForecastAgent:
     def on_run_end(self, result: ForecastResult) -> None:
         pass
 
-    # ------------------------------------------------------------------
     # Core loop
-    # ------------------------------------------------------------------
-
     def run(
         self,
         title: str,
@@ -246,10 +240,7 @@ class DefaultForecastAgent:
             self.on_observation(action, output)
         return self.add_messages(*self.model.format_observation_messages(message, outputs))
 
-    # ------------------------------------------------------------------
     # Serialization / save
-    # ------------------------------------------------------------------
-
     def serialize_info(self, *extra_dicts: dict) -> dict:
         """Serialize run metadata (config, costs, status, submission, evaluation)."""
         last_message = self.messages[-1] if self.messages else {}

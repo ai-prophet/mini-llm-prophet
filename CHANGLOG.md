@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.1.4
+
+### CLI: Source board redesign
+
+The source board panel is now rendered as grouped source cards for better scanability during runs:
+- Each entry shows `[#id] title`, URL, snippet preview, and note content in a dedicated nested panel
+- Reactions are rendered with explicit sentiment colors/symbols (`++`, `+`, `~`, `-`, `--`)
+- Long snippets/notes now show truncation hints (for example, `...N characters omitted`)
+- Panel subtitle includes source count and empty-state text is cleaner
+
+### Improved: Search results readability
+
+Search result rendering has been refined to reduce visual noise:
+- Result metadata and title now render on one line
+- Snippet truncation now explicitly reports omitted character count
+
+### Improved: Batch run progress and cost accounting
+
+Batch progress behavior is now more informative and simpler:
+- `BatchForecastAgent` now tracks per-step cost deltas and forwards them to the progress manager
+- Per-run status now displays both consumed cost and run limit (`$used/$limit`)
+- Batch progress UI removed ETA estimation (elapsed/progress/cost remain)
+- Added `examples/example_batch_job.jsonl` as a ready-to-run batch input sample
+
+### Important: Trajectory key format update
+
+Trajectory message keys are now role-prefixed instead of generic `mN` IDs:
+- Previous format example: `m0`, `m1`, `m2`
+- New format example: `S0`, `U0`, `A0`, `T0` (with `O*` for non-standard roles)
+
+This improves trace readability but changes `trajectory.json` key naming for downstream consumers.
+
+### Config and docs updates
+
+- Default config now explicitly sets `model.model_class: "litellm"`
+- README quickstart examples now include `--model-class litellm` with Gemini model usage
+- Minor context-summary wording cleanup in truncated context text
+
 ## v0.1.3
 
 ### Major: Agent trajectory observability
