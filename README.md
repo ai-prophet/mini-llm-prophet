@@ -16,8 +16,11 @@ A minimal LLM forecasting agent scaffolding. Inspired by [mini-swe-agent](https:
 
 ```bash
 cd mini-llm-prophet
-pip install -e .
+pip install -e ".[perplexity]"
 ```
+
+`perplexity` is the default search backend, so installing with `.[perplexity]` is recommended.
+If you only use Brave search, `pip install -e .` is sufficient.
 
 ### 2. Set API Keys
 
@@ -28,7 +31,9 @@ export PERPLEXITY_API_KEY="your-perplexity-key"    # for Perplexity search backe
 export BRAVE_API_KEY="your-brave-search-key"       # for Brave search backend
 ```
 
-Two model classes are supported: **OpenRouter** (default) and **LiteLLM**. Use `--model-class litellm` to access any provider supported by [LiteLLM](https://docs.litellm.ai/) (OpenAI, Anthropic, etc.).
+Two model classes are supported: **LiteLLM** (default) and **OpenRouter**. Use `--model-class litellm` to access any provider supported by [LiteLLM](https://docs.litellm.ai/) (OpenAI, Anthropic, etc.).
+
+`.env` in the project root is loaded automatically at startup (via `python-dotenv`).
 
 ### 3. Run
 
@@ -67,10 +72,12 @@ prophet batch -f problems.jsonl -o ./batch_output -w 4 --model openai/gpt-4o
 Each line in the JSONL file is a forecasting problem:
 
 ```json
-{"title": "Will X happen?", "outcomes": ["Yes", "No"], "ground_truth": {"Yes": 1, "No": 0}, "run_id": "my_problem"}
+{"title": "Will X happen?", "outcomes": ["Yes", "No"], "end_time": "2026-03-01T00:00:00Z", "ground_truth": {"Yes": 1, "No": 0}, "run_id": "my_problem"}
 ```
 
-`ground_truth` and `run_id` are optional. Output goes to a meta-directory with per-run artifacts and a `summary.json`.
+`ground_truth`, `run_id`, and `end_time` are optional.  
+If present, `end_time` is parsed and passed as a date upper bound for runtime search filtering.
+Output goes to a meta-directory with per-run artifacts and a `summary.json`.
 
 ## CLI Options
 
@@ -109,16 +116,23 @@ Default config is in `src/miniprophet/config/default.yaml`. Override with `-c`:
 
 ```bash
 prophet run -t "..." -o "..." -c model.model_kwargs.temperature=0.5
-prophet run -t "..." -o "..." -c search.search_class=perplexity
+prophet run -t "..." -o "..." -c search.search_class=brave
+prophet run -t "..." -o "..." -c search.perplexity.max_tokens=8000
+prophet run -t "..." -o "..." -c search.search_date_before=01/31/2026
+prophet run -t "..." -o "..." -c search.search_date_after=01/01/2025
 ```
 
 Multiple `-c` flags are merged in order (later values win).
+
+Search config now lives under `search.*`, including:
+- shared settings (`search_results_limit`, `max_source_display_chars`, runtime date filters)
+- backend-specific settings (`search.perplexity.*`, `search.brave.*`)
 
 ## Architecture
 
 The agent runs a tool-call loop where each step allows exactly one tool call. Tools are modular -- each lives in the `tools/` package and implements the `Tool` protocol (schema, execute, display):
 
-1. **Search** -- query the web for relevant information (sources get global IDs: S1, S2, ...)
+1. **Search** -- query the web for relevant information (sources get global IDs: S1, S2, ...). Search schemas are backend-aware (for example, Perplexity date filters or Brave freshness).
 2. **Add Source** -- save a source to the board with an analytical note and optional per-outcome reaction
 3. **Edit Note** -- update notes or reactions on previously saved sources
 4. **Submit** -- provide a probabilistic forecast for all outcomes
@@ -137,7 +151,7 @@ You can see the default context management strategy in `src/miniprophet/agent/co
 - **`tools/`** -- modular tool package (`SearchForecastTool`, `AddSourceTool`, `EditNoteTool`, `SubmitTool`)
 - **`SlidingWindowContextManager`** -- stateful context truncation with query history tracking
 - **`OpenRouterModel`** / **`LitellmModel`** -- LLM interfaces (OpenRouter API and LiteLLM)
-- **`BraveSearchTool`** / **`PerplexitySearchTool`** -- pluggable search backends
+- **`BraveSearchTool`** / **`PerplexitySearchTool`** -- pluggable search backends with backend-specific search parameter schemas
 
 ### Cost Tracking
 
@@ -161,6 +175,19 @@ Computes Brier Score (and any registered custom metrics) and includes results in
 
 When adding sources, the model can annotate per-outcome sentiment (`very_positive`, `positive`, `neutral`, `negative`, `very_negative`), displayed compactly in the CLI with colored symbols.
 
+### Source Dates
+
+Search sources now carry optional `date` metadata, which is shown in both search results and source board cards.
+
+### Runtime Date Filters
+
+Date filters can be injected at run time through config:
+- `search.search_date_before`
+- `search.search_date_after`
+
+Perplexity maps these to its API date filters (`search_*_date_filter`, `last_updated_*_filter`).
+Brave currently supports explicit `freshness` query parameter but does not yet apply runtime before/after filters.
+
 ## Extending
 
 ### Custom Search Backend
@@ -172,7 +199,13 @@ from miniprophet.search import SearchResult
 from miniprophet.environment.source_board import Source
 
 class MySearchTool:
-    def search(self, query: str, limit: int = 5) -> SearchResult:
+    search_parameters_schema = {
+        "type": "object",
+        "properties": {"query": {"type": "string"}},
+        "required": ["query"],
+    }
+
+    def search(self, query: str, limit: int = 5, **kwargs) -> SearchResult:
         sources = [...]
         return SearchResult(sources=sources, cost=0.05)
 

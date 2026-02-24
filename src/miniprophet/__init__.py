@@ -6,7 +6,7 @@ Provides:
 - Protocol definitions for core components (Model, Environment, Tool)
 """
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 from pathlib import Path
 from typing import Any, Protocol

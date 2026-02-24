@@ -1,5 +1,56 @@
 # Changelog
 
+## v0.1.5
+
+### Major: Search stack upgrades (SDK + backend-aware schemas)
+
+- Perplexity integration now uses the official `perplexityai` SDK instead of raw HTTP calls.
+- Added optional dependency group: `pip install -e ".[perplexity]"`.
+- Search tool schemas are now backend-aware:
+  - Perplexity exposes date-related fields (for example `search_after_date_filter`, `last_updated_after_filter`)
+  - Brave exposes `freshness` (including custom date ranges)
+- Search tool arguments are forwarded as `**kwargs` into backends, enabling backend-specific filtering behavior.
+
+### New: Date-aware search flow
+
+- Added runtime search date filters passed through the full stack:
+  - `search.search_date_before`
+  - `search.search_date_after`
+- `DefaultForecastAgent.run(...)` now accepts runtime kwargs and forwards them into tool execution.
+- `ForecastEnvironment.execute(...)` now merges runtime kwargs with action arguments.
+- Perplexity maps runtime date bounds to corresponding API filters (`search_*_date_filter`, `last_updated_*_filter`).
+- Batch mode supports per-problem `end_time` in JSONL; it is parsed and used as `search_date_before`.
+- Brave currently logs that runtime before/after filtering is not yet supported (while retaining `freshness` support).
+
+### New: Source date metadata end-to-end
+
+- `Source` now includes `date`.
+- Search backends now populate `date`:
+  - Perplexity uses publication/update dates (latest when both exist)
+  - Brave uses age fields from API results
+- Source board serialization/rendering includes source date.
+- CLI now displays source dates in:
+  - search result cards
+  - source board cards
+- Search observation text now includes a `Date:` line per result.
+
+### Config and wiring changes
+
+- Search config layout was refactored under `search.*`:
+  - shared keys (`search_results_limit`, `max_source_display_chars`, runtime date bounds)
+  - backend-specific nested blocks (`search.perplexity.*`, `search.brave.*`)
+- `get_search_tool(...)` now reads nested backend config and defaults to `perplexity`.
+- `run/cli.py` and batch runner now consume the new search config structure.
+- Forecast environment no longer serializes an `environment` config block in run metadata.
+
+### Fixes and DX improvements
+
+- Added `python-dotenv` dependency and automatic project-root `.env` loading at import time.
+- Simplified Typer dependency from `typer[all]` to `typer`.
+- Updated default model name to `gemini/gemini-3-flash-preview`.
+- `.gitignore` now ignores `scripts/` and all `*.jsonl` except `examples/example_batch_job.jsonl`.
+- Version bumped to `0.1.5`.
+
 ## v0.1.4
 
 ### CLI: Source board redesign
