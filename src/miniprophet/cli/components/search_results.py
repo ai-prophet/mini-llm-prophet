@@ -41,6 +41,7 @@ def _render_search_results_panel(
         url = s.url
         stitle = s.title
         snippet = s.snippet
+        date = f"Date: {s.date or 'N/A'}"
 
         # Title line (primary)
         title_text = Text(stitle.strip() or "(untitled)", style="bold white")
@@ -48,6 +49,10 @@ def _render_search_results_panel(
         # URL line (secondary; make it look link-like)
         url_text = Text(url.strip(), style="cyan underline")
         url_text.no_wrap = False
+
+        # Date line (secondary; make it look link-like)
+        date_text = Text(date.strip(), style="bright_black")
+        date_text.no_wrap = False
 
         # Snippet line (tertiary; dim so it doesn't dominate)
         snippet_text = Text(snippet[:max_source_display_chars], style="white")
@@ -64,11 +69,17 @@ def _render_search_results_panel(
 
         # Build the per-result content group
         # Combine meta and title on the same line
-        first_line = Text()
-        first_line.append_text(meta)
-        first_line.append_text(title_text)
+        first_line_left = Text()
+        first_line_left.append_text(meta)
+        first_line_left.append_text(title_text)
+
+        first_line_grid = Table.grid(expand=True)
+        first_line_grid.add_column(ratio=1, overflow="fold")  # meta + title
+        first_line_grid.add_column(justify="right")  # date
+        first_line_grid.add_row(first_line_left, date_text)
+
         body = Group(
-            first_line,
+            first_line_grid,
             url_text,
             snippet_text,
         )

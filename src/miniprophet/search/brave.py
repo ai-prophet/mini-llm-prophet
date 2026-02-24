@@ -59,6 +59,11 @@ class BraveSearchTool:
         self._max_extract_chars = max_extract_chars
 
     def search(self, query: str, limit: int = 5, **kwargs: Any) -> SearchResult:
+        if "search_date_before" in kwargs or "search_date_after" in kwargs:
+            kwargs.pop("search_date_before", None)
+            kwargs.pop("search_date_after", None)
+            logger.warning("Brave has not supported date filtering yet")
+
         freshness = kwargs.get("freshness")
         links = self._get_links(query, limit, freshness=freshness)
         sources: list[Source] = []

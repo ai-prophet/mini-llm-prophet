@@ -48,12 +48,20 @@ model:
   format_error_template: "Error: {error}. Please make a valid tool call."
   observation_template: "{output}"
 
-environment:
-  search_results_limit: 5
-  max_source_display_chars: 200
-
 search:
   search_class: "perplexity"
-  connect_timeout: 10
-  total_timeout: 30
-  max_retries: 3
+  search_results_limit: 5
+  max_source_display_chars: 200
+  search_date_before: null
+
+  perplexity:
+    timeout: 30
+    max_tokens_per_page: 4096
+    max_tokens: 10000
+    country: "US"
+
+  brave:
+    connect_timeout: 10
+    total_timeout: 30
+    max_retries: 3
+    max_extract_chars: 3000

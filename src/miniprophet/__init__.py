@@ -48,10 +48,9 @@ class Tool(Protocol):
 class Environment(Protocol):
     """Protocol for forecast environments."""
 
-    config: Any
     _tools: dict[str, Tool]
 
-    def execute(self, action: dict) -> dict: ...
+    def execute(self, action: dict, **kwargs) -> dict: ...
 
     def get_tool_schemas(self) -> list[dict]: ...
 

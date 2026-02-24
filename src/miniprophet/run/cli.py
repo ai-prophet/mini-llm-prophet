@@ -118,9 +118,10 @@ def main(
     # ---- Forecast loop (re-enter setup in interactive mode) ----
     while True:
         model = get_model(config=config.get("model", {}))
-        search_backend = get_search_tool(config=config.get("search", {}))
 
-        env_cfg = config.get("environment", {})
+        search_cfg = config.get("search", {})
+        search_backend = get_search_tool(search_cfg=search_cfg)
+
         agent_search_limit = config.get("agent", {}).get("search_limit", 10)
         board = SourceBoard()
         tools = create_default_tools(
@@ -128,10 +129,10 @@ def main(
             outcomes=outcome_list,
             board=board,
             search_limit=agent_search_limit,
-            search_results_limit=env_cfg.get("search_results_limit", 5),
-            max_source_display_chars=env_cfg.get("max_source_display_chars", 2000),
+            search_results_limit=search_cfg.get("search_results_limit", 5),
+            max_source_display_chars=search_cfg.get("max_source_display_chars", 2000),
         )
-        env = ForecastEnvironment(tools, board=board, **env_cfg)
+        env = ForecastEnvironment(tools, board=board)
 
         context_window = config.get("agent", {}).get("context_window", 6)
         ctx_mgr = (
@@ -141,7 +142,15 @@ def main(
             model=model, env=env, context_manager=ctx_mgr, **config.get("agent", {})
         )
 
-        result = agent.run(title=resolved_title, outcomes=outcome_list, ground_truth=ground_truth)
+        runtime_kwargs = {}
+        if search_cfg.get("search_date_before", None):
+            runtime_kwargs["search_date_before"] = search_cfg["search_date_before"]
+        if search_cfg.get("search_date_after", None):
+            runtime_kwargs["search_date_after"] = search_cfg["search_date_after"]
+
+        result = agent.run(
+            title=resolved_title, outcomes=outcome_list, ground_truth=ground_truth, **runtime_kwargs
+        )
 
         if not result.get("submission"):
             console.print(

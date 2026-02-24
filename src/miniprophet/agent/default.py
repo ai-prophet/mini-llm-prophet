@@ -108,6 +108,7 @@ class DefaultForecastAgent:
         title: str,
         outcomes: list[str],
         ground_truth: dict[str, int] | None = None,
+        **runtime_kwargs,
     ) -> ForecastResult:
         if len(outcomes) > self.config.max_outcomes:
             raise ValueError(
@@ -116,6 +117,8 @@ class DefaultForecastAgent:
             )
         if ground_truth is not None:
             validate_ground_truth(outcomes, ground_truth)
+
+        self.runtime_kwargs = runtime_kwargs
 
         outcomes_formatted = ", ".join(outcomes)
         current_time = (
@@ -225,7 +228,7 @@ class DefaultForecastAgent:
 
     def execute_actions(self, message: dict) -> list[dict]:
         actions = message.get("extra", {}).get("actions", [])
-        outputs = [self.env.execute(action) for action in actions]
+        outputs = [self.env.execute(action, **self.runtime_kwargs) for action in actions]
         for action, output in zip(actions, outputs):
             sc = output.get("search_cost", 0.0)
             if sc:

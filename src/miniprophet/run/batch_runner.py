@@ -28,7 +28,15 @@ class ForecastProblem:
     title: str
     outcomes: list[str]
     ground_truth: dict[str, int] | None = None
+    end_time: str | None = None
     retries: int = 0
+
+    def __post_init__(self):
+        if self.end_time:
+            try:
+                self.end_time = to_mm_dd_yy(self.end_time)
+            except ValueError:
+                self.end_time = None
 
 
 @dataclass
@@ -57,6 +65,13 @@ class RunResult:
             "error": self.error,
             "output_dir": self.output_dir,
         }
+
+
+def to_mm_dd_yy(dt_str: str) -> str:
+    from dateutil import parser
+
+    dt = parser.parse(dt_str)
+    return dt.strftime("%m/%d/%y")
 
 
 def load_problems(path: Path) -> list[ForecastProblem]:
@@ -94,6 +109,7 @@ def load_problems(path: Path) -> list[ForecastProblem]:
                 title=data["title"],
                 outcomes=data["outcomes"],
                 ground_truth=data.get("ground_truth"),
+                end_time=data.get("end_time"),
             )
         )
 
@@ -143,9 +159,9 @@ def process_problem(
             return True
 
         model = get_model(config=config.get("model", {}))
-        search_backend = get_search_tool(config=config.get("search", {}))
+        search_cfg = config.get("search", {})
+        search_backend = get_search_tool(search_cfg=search_cfg)
 
-        env_cfg = config.get("environment", {})
         agent_cfg = config.get("agent", {})
         agent_search_limit = agent_cfg.get("search_limit", 10)
         board = SourceBoard()
@@ -154,10 +170,10 @@ def process_problem(
             outcomes=problem.outcomes,
             board=board,
             search_limit=agent_search_limit,
-            search_results_limit=env_cfg.get("search_results_limit", 5),
-            max_source_display_chars=env_cfg.get("max_source_display_chars", 2000),
+            search_results_limit=search_cfg.get("search_results_limit", 5),
+            max_source_display_chars=search_cfg.get("max_source_display_chars", 2000),
         )
-        env = ForecastEnvironment(tools, board=board, **env_cfg)
+        env = ForecastEnvironment(tools, board=board)
 
         context_window = agent_cfg.get("context_window", 6)
         ctx_mgr = (
@@ -173,10 +189,19 @@ def process_problem(
             **agent_cfg,
         )
 
+        runtime_kwargs = (
+            {
+                "search_date_before": problem.end_time,
+            }
+            if problem.end_time
+            else {}
+        )
+
         forecast = agent.run(
             title=problem.title,
             outcomes=problem.outcomes,
             ground_truth=problem.ground_truth,
+            **runtime_kwargs,
         )
 
         result.status = forecast.get("exit_status", "unknown")

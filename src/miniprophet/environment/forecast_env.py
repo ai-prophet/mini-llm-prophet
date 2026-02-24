@@ -61,14 +61,12 @@ class ForecastEnvironment:
         tools: list[Tool],
         *,
         board: SourceBoard | None = None,
-        config_class: type = ForecastEnvConfig,
         **kwargs: Any,
     ) -> None:
-        self.config = config_class(**kwargs)
         self.board = board or SourceBoard()
         self._tools: dict[str, Tool] = {t.name: t for t in tools}
 
-    def execute(self, action: dict) -> dict:
+    def execute(self, action: dict, **kwargs) -> dict:
         tool_name = action.get("name", "")
         try:
             raw_args = action.get("arguments", "{}")
@@ -79,6 +77,8 @@ class ForecastEnvironment:
         tool = self._tools.get(tool_name)
         if tool is None:
             return {"output": f"Unknown tool: {tool_name}", "error": True}
+        # override the agent's args with runtime kwargs
+        args.update(kwargs)
         return tool.execute(args)
 
     def get_tool_schemas(self) -> list[dict]:
@@ -90,9 +90,6 @@ class ForecastEnvironment:
     def serialize(self) -> dict:
         return {
             "info": {
-                "config": {
-                    "environment": self.config.model_dump(mode="json"),
-                },
                 "board": self.board.serialize(),
             },
         }

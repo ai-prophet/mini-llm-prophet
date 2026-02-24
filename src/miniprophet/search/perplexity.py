@@ -85,7 +85,16 @@ class PerplexitySearchTool:
         }
         if self._country:
             payload["country"] = self._country
+
+        search_date_before = kwargs.pop("search_date_before", None)
+        search_date_after = kwargs.pop("search_date_after", None)
         payload.update(kwargs)
+        if search_date_after:
+            payload["search_after_date_filter"] = search_date_after
+            payload["last_updated_after_filter"] = search_date_after
+        if search_date_before:
+            payload["search_before_date_filter"] = search_date_before
+            payload["last_updated_before_filter"] = search_date_before
 
         try:
             resp = self._client.search.create(**payload)

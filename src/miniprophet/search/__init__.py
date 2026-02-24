@@ -32,30 +32,30 @@ _SEARCH_CLASS_MAPPING: dict[str, str] = {
 }
 
 
-def get_search_tool(config: dict) -> SearchTool:
+def get_search_tool(search_cfg: dict) -> SearchTool:
     """Instantiate a search tool from a config dict.
 
     The 'search_class' key selects the implementation (default: "brave").
     Remaining keys are forwarded as keyword arguments to the constructor.
     """
-    config = dict(config)
-    class_key = config.pop("search_class", "brave")
-    full_path = _SEARCH_CLASS_MAPPING.get(class_key, class_key)
+    search_cls = search_cfg.get("search_class", "perplexity")
+    search_cls_config = search_cfg.get(search_cls, {})
+    full_path = _SEARCH_CLASS_MAPPING.get(search_cls, search_cls)
     try:
         module_name, class_name = full_path.rsplit(".", 1)
         module = importlib.import_module(module_name)
         cls = getattr(module, class_name)
     except (ValueError, ImportError, AttributeError) as exc:
         raise ValueError(
-            f"Unknown search class: {class_key} (resolved to {full_path}, "
+            f"Unknown search class: {search_cls} (resolved to {full_path}, "
             f"available: {list(_SEARCH_CLASS_MAPPING)})"
         ) from exc
     sig = inspect.signature(cls.__init__)
     if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
-        accepted = config
+        accepted = search_cls_config
     else:
         valid_keys = set(sig.parameters.keys()) - {"self"}
-        accepted = {k: v for k, v in config.items() if k in valid_keys}
+        accepted = {k: v for k, v in search_cls_config.items() if k in valid_keys}
     return cls(**accepted)
 
 
