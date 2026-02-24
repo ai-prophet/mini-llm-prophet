@@ -42,7 +42,7 @@ agent:
 
 model:
   model_class: "litellm"
-  model_name: "google/gemini-3-flash-preview"
+  model_name: "gemini/gemini-3-flash-preview"
   model_kwargs:
     temperature: 0.9
   format_error_template: "Error: {error}. Please make a valid tool call."

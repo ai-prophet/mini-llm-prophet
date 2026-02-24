@@ -11,7 +11,11 @@ __version__ = "0.1.4"
 from pathlib import Path
 from typing import Any, Protocol
 
+from dotenv import load_dotenv
+
 package_dir = Path(__file__).resolve().parent
+global_dir = package_dir.parent.parent
+load_dotenv(dotenv_path=global_dir / ".env")
 
 
 class Model(Protocol):
