@@ -22,6 +22,7 @@ class Source:
     url: str
     title: str
     snippet: str
+    date: str | None = None
 
 
 @dataclass
@@ -76,8 +77,10 @@ class SourceBoard:
             return "<source_board>\n(empty)\n</source_board>"
         lines = [f'<source_board count="{len(self._entries)}">']
         for entry in self._entries:
+            date_attr = f' date="{entry.source.date}"' if entry.source.date else ""
             lines.append(
-                f'<source board_id="{entry.id}" title="{entry.source.title}" url="{entry.source.url}">'
+                f'<source board_id="{entry.id}" title="{entry.source.title}" '
+                f'url="{entry.source.url}"{date_attr}>'
             )
             lines.append(f"Note: {entry.note}")
             if entry.reaction:
@@ -98,6 +101,7 @@ class SourceBoard:
                     "url": e.source.url,
                     "title": e.source.title,
                     "snippet": e.source.snippet,
+                    "date": e.source.date,
                 },
                 "note": e.note,
                 "reaction": e.reaction,

@@ -47,6 +47,7 @@ def _render_source_board_panel(board) -> Panel:
         title = (source.get("title", "") or "").strip() or "(untitled)"
         url = (source.get("url", "") or "").strip()
         snippet = source.get("snippet", "") or ""
+        date = (source.get("date", "") or "").strip()
         note = (entry.get("note", "") or "").strip() or "(no note)"
         reaction = entry.get("reaction", {}) or {}
 
@@ -56,6 +57,11 @@ def _render_source_board_panel(board) -> Panel:
 
         url_text = Text(url, style="cyan underline")
         url_text.no_wrap = False
+
+        date_text = Text()
+        if date:
+            date_text.append("Date: ", style="bold white")
+            date_text.append(date, style="white")
 
         snippet_text = Text(snippet[:200], style="white")
         extra_chars = len(snippet) - 200
@@ -76,7 +82,10 @@ def _render_source_board_panel(board) -> Panel:
             padding=(0, 1),
         )
 
-        body_items = [first_line, url_text, snippet_text]
+        body_items = [first_line, url_text]
+        if date:
+            body_items.append(date_text)
+        body_items.append(snippet_text)
         if reaction:
             body_items.append(format_reaction(reaction))
         body_items.append(quote_panel)

@@ -9,19 +9,45 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from typing import Any
 
-import requests
+from perplexity import Perplexity
 
 from miniprophet.environment.source_board import Source
-from miniprophet.exceptions import SearchAuthError, SearchNetworkError, SearchRateLimitError
+from miniprophet.exceptions import (
+    SearchAuthError,
+    SearchNetworkError,
+    SearchRateLimitError,
+)
 from miniprophet.search import SearchResult
 
 logger = logging.getLogger("miniprophet.search.perplexity")
 
-PERPLEXITY_API_ENDPOINT = "https://api.perplexity.ai/search"
 # pricing from: https://docs.perplexity.ai/docs/getting-started/pricing
 PERPLEXITY_PER_SEARCH_COST = 5 / 1000
+PERPLEXITY_SEARCH_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "The search query to find relevant information.",
+        },
+        "search_after_date_filter": {
+            "type": "string",
+            "description": (
+                "Optional publication-time lower bound in MM/DD/YYYY format (e.g. '01/01/2025')."
+            ),
+        },
+        "last_updated_after_filter": {
+            "type": "string",
+            "description": (
+                "Optional last-update lower bound in MM/DD/YYYY format (e.g. '01/01/2025')."
+            ),
+        },
+    },
+    "required": ["query"],
+}
 
 
 class PerplexitySearchTool:
@@ -31,6 +57,8 @@ class PerplexitySearchTool:
     already included in the snippet field, so no additional scraping is needed.
     """
 
+    search_parameters_schema = PERPLEXITY_SEARCH_PARAMETERS_SCHEMA
+
     def __init__(
         self,
         timeout: int = 30,
@@ -39,19 +67,16 @@ class PerplexitySearchTool:
         country: str = "US",
     ) -> None:
         self._api_key = os.getenv("PERPLEXITY_API_KEY", "")
+        if not self._api_key:
+            raise SearchAuthError("PERPLEXITY_API_KEY environment variable is not set")
+
         self._timeout = timeout
         self._max_tokens_per_page = max_tokens_per_page
         self._max_tokens = max_tokens
         self._country = country
+        self._client = Perplexity(api_key=self._api_key, timeout=float(self._timeout))
 
-    def search(self, query: str, limit: int = 5) -> SearchResult:
-        if not self._api_key:
-            raise SearchAuthError("PERPLEXITY_API_KEY environment variable is not set")
-
-        headers = {
-            "Authorization": f"Bearer {self._api_key}",
-            "Content-Type": "application/json",
-        }
+    def search(self, query: str, limit: int = 5, **kwargs: Any) -> SearchResult:
         payload: dict[str, Any] = {
             "query": query,
             "max_results": min(limit, 20),
@@ -60,33 +85,37 @@ class PerplexitySearchTool:
         }
         if self._country:
             payload["country"] = self._country
+        payload.update(kwargs)
 
         try:
-            resp = requests.post(
-                PERPLEXITY_API_ENDPOINT,
-                headers=headers,
-                json=payload,
-                timeout=self._timeout,
-            )
-            resp.raise_for_status()
-        except requests.exceptions.HTTPError:
-            if resp.status_code == 401:
+            resp = self._client.search.create(**payload)
+        except Exception as exc:
+            status_code = getattr(exc, "status_code", None)
+            if status_code is None:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+
+            if status_code == 401:
                 raise SearchAuthError(
                     "Perplexity API authentication failed. Check PERPLEXITY_API_KEY."
                 )
-            if resp.status_code == 429:
+            if status_code == 429:
                 raise SearchRateLimitError("Perplexity API rate limit exceeded")
-            raise SearchNetworkError(f"Perplexity API HTTP {resp.status_code}: {resp.text[:300]}")
-        except requests.exceptions.RequestException as exc:
-            raise SearchNetworkError(f"Perplexity API request failed: {exc}") from exc
+            raise SearchNetworkError(f"Perplexity SDK request failed: {exc}") from exc
 
-        data = resp.json()
         sources: list[Source] = []
-        for item in data.get("results", []):
-            url = item.get("url", "")
-            snippet = item.get("snippet", "")
-            if url and snippet:
-                sources.append(Source(url=url, title=item.get("title", ""), snippet=snippet))
+        for item in resp.results:
+            url = item.url or ""
+            snippet = item.snippet or ""
+            title = item.title or ""
+            date, updated_date = item.date, item.last_updated
+            # we take the latest date between the publication date and the last updated date
+            if date is not None and updated_date is not None:
+                d1, d2 = (
+                    datetime.strptime(date, "%Y-%m-%d"),
+                    datetime.strptime(updated_date, "%Y-%m-%d"),
+                )
+                date = max(d1, d2).strftime("%Y-%m-%d")
+            sources.append(Source(url=url, title=title, snippet=snippet, date=date))
 
         logger.info(f"Perplexity search '{query}': {len(sources)} source(s)")
         # For perplexity, the cost is fixed for each request, regardless of the number of sources returned

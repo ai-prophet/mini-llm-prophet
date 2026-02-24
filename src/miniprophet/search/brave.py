@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 import requests
 import trafilatura
@@ -19,10 +20,30 @@ from miniprophet.search import SearchResult
 logger = logging.getLogger("miniprophet.search.brave")
 
 BRAVE_API_ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+BRAVE_SEARCH_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "The search query to find relevant information.",
+        },
+        "freshness": {
+            "type": "string",
+            "description": (
+                "Optional date filter for recent results. Use Brave freshness values "
+                "'pd', 'pw', 'pm', 'py', or a custom range like "
+                "'2025-01-01to2025-12-31'."
+            ),
+        },
+    },
+    "required": ["query"],
+}
 
 
 class BraveSearchTool:
     """Search tool backed by the Brave Search API + trafilatura content extraction."""
+
+    search_parameters_schema = BRAVE_SEARCH_PARAMETERS_SCHEMA
 
     def __init__(
         self,
@@ -37,8 +58,9 @@ class BraveSearchTool:
         self._max_retries = max_retries
         self._max_extract_chars = max_extract_chars
 
-    def search(self, query: str, limit: int = 5) -> SearchResult:
-        links = self._get_links(query, limit)
+    def search(self, query: str, limit: int = 5, **kwargs: Any) -> SearchResult:
+        freshness = kwargs.get("freshness")
+        links = self._get_links(query, limit, freshness=freshness)
         sources: list[Source] = []
         for link in links:
             text = self._fetch_article_text(link["url"])
@@ -48,12 +70,15 @@ class BraveSearchTool:
                         url=link["url"],
                         title=link["title"],
                         snippet=link["snippet"],
+                        date=link.get("date"),
                     )
                 )
         logger.info(f"Search '{query}': {len(sources)}/{len(links)} sources extracted")
         return SearchResult(sources=sources, cost=0.0)
 
-    def _get_links(self, query: str, limit: int) -> list[dict[str, str]]:
+    def _get_links(
+        self, query: str, limit: int, freshness: Any | None = None
+    ) -> list[dict[str, str | None]]:
         if not self._api_key:
             raise SearchAuthError("BRAVE_API_KEY environment variable is not set")
 
@@ -69,6 +94,8 @@ class BraveSearchTool:
             "search_lang": "en",
             "result_filter": "web",
         }
+        if isinstance(freshness, str) and freshness.strip():
+            params["freshness"] = freshness.strip()
 
         try:
             resp = requests.get(
@@ -88,7 +115,7 @@ class BraveSearchTool:
             raise SearchNetworkError(f"Brave API request failed: {exc}") from exc
 
         data = resp.json()
-        results: list[dict[str, str]] = []
+        results: list[dict[str, str | None]] = []
         for item in data.get("web", {}).get("results", []):
             url = item.get("url")
             if url:
@@ -97,6 +124,7 @@ class BraveSearchTool:
                         "url": url,
                         "title": item.get("title", ""),
                         "snippet": item.get("description", ""),
+                        "date": item.get("age") or item.get("page_age"),
                     }
                 )
         return results[:limit]

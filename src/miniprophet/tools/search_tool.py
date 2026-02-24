@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import logging
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -11,6 +13,17 @@ from miniprophet.exceptions import SearchAuthError, SearchError
 from miniprophet.search import SearchResult, SearchTool
 
 logger = logging.getLogger("miniprophet.tools.search")
+
+BASE_SEARCH_PARAMETERS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": "The search query to find relevant information.",
+        },
+    },
+    "required": ["query"],
+}
 
 SEARCH_SCHEMA = {
     "type": "function",
@@ -21,16 +34,7 @@ SEARCH_SCHEMA = {
             "Returns a list of sources with titles, snippets, and article content. "
             "Each source is assigned a global ID (S1, S2, ...) that persists across searches."
         ),
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query to find relevant information.",
-                },
-            },
-            "required": ["query"],
-        },
+        "parameters": BASE_SEARCH_PARAMETERS_SCHEMA,
     },
 }
 
@@ -64,7 +68,11 @@ class SearchForecastTool:
         return "search"
 
     def get_schema(self) -> dict:
-        return SEARCH_SCHEMA
+        schema = copy.deepcopy(SEARCH_SCHEMA)
+        backend_parameters = getattr(self._backend, "search_parameters_schema", None)
+        if isinstance(backend_parameters, dict):
+            schema["function"]["parameters"] = backend_parameters  # type: ignore
+        return schema
 
     def _assign_source_id(self, source: Source) -> str:
         sid = f"S{self._next_source_id}"
@@ -87,8 +95,11 @@ class SearchForecastTool:
             }
 
         try:
+            search_kwargs = {k: v for k, v in args.items() if k != "query"}
             result: SearchResult = self._backend.search(
-                query, limit=self._config.search_results_limit
+                query,
+                limit=self._config.search_results_limit,
+                **search_kwargs,
             )
         except SearchAuthError:
             raise
@@ -106,8 +117,10 @@ class SearchForecastTool:
         else:
             lines: list[str] = [f'<search_results count="{len(self.last_search_results)}">']
             for sid, src in self.last_search_results:
+                date_line = f"Date: {src.date or 'No date info'}\n"
                 lines.append(
                     f'<result id="{sid}" title="{src.title}" url="{src.url}">\n'
+                    f"{date_line}"
                     f"Snippet: {src.snippet}\n"
                     f"</result>"
                 )
