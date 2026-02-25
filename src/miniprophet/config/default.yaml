@@ -37,7 +37,7 @@ agent:
   cost_limit: 3.0
   search_limit: 10
   max_outcomes: 20
-  context_window: 6
+  context_window: 10
   show_current_time: false
 
 model:

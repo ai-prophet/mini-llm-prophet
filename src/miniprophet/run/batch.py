@@ -45,6 +45,9 @@ def main(
         "--resume",
         help="Resume from existing output summary: skip already-seen run_ids.",
     ),
+    offset: int = typer.Option(
+        0, "--offset", help="Offset how many days before the end time for search upper bound."
+    ),
 ) -> None:
     """Run the forecasting agent on a batch of problems from a JSONL file."""
     from miniprophet.config import get_config_from_spec
@@ -59,7 +62,7 @@ def main(
         raise typer.Exit(1)
 
     try:
-        problems = load_problems(input_file)
+        problems = load_problems(input_file, offset=offset)
     except ValueError as exc:
         console.print(f"[bold red]Error:[/bold red] {exc}")
         raise typer.Exit(1)

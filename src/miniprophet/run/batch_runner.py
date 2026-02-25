@@ -30,11 +30,12 @@ class ForecastProblem:
     ground_truth: dict[str, int] | None = None
     end_time: str | None = None
     retries: int = 0
+    offset: int = 0
 
     def __post_init__(self):
         if self.end_time:
             try:
-                self.end_time = to_mm_dd_yyyy(self.end_time)
+                self.end_time = to_mm_dd_yyyy(self.end_time, self.offset)
             except ValueError:
                 self.end_time = None
 
@@ -85,14 +86,16 @@ class RunResult:
         }
 
 
-def to_mm_dd_yyyy(dt_str: str) -> str:
+def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
+    from datetime import timedelta
+
     from dateutil import parser
 
     dt = parser.parse(dt_str)
-    return dt.strftime("%m/%d/%Y")
+    return (dt - timedelta(days=offset)).strftime("%m/%d/%Y")
 
 
-def load_problems(path: Path) -> list[ForecastProblem]:
+def load_problems(path: Path, offset: int = 0) -> list[ForecastProblem]:
     """Load and validate forecasting problems from a JSONL file."""
     problems: list[ForecastProblem] = []
     seen_ids: set[str] = set()
@@ -128,6 +131,7 @@ def load_problems(path: Path) -> list[ForecastProblem]:
                 outcomes=data["outcomes"],
                 ground_truth=data.get("ground_truth"),
                 end_time=data.get("end_time"),
+                offset=offset,
             )
         )
 
