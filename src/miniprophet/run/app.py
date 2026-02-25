@@ -27,9 +27,11 @@ def _callback() -> None:
 def _register_subcommands() -> None:
     from miniprophet.run.batch import app as batch_app
     from miniprophet.run.cli import app as cli_app
+    from miniprophet.run.set import app as set_app
 
     app.add_typer(cli_app, name="run", help="Run a single forecast (interactive or CLI args).")
     app.add_typer(batch_app, name="batch", help="Run batch forecasting from a JSONL file.")
+    app.add_typer(set_app, name="set", help="Set global .env variables.")
 
 
 _register_subcommands()

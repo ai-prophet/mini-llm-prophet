@@ -13,9 +13,18 @@ from typing import Any, Protocol
 
 from dotenv import load_dotenv
 
+import os
+from platformdirs import user_config_dir
+
+
 package_dir = Path(__file__).resolve().parent
 global_dir = package_dir.parent.parent
-load_dotenv(dotenv_path=global_dir / ".env")
+
+global_config_dir = Path(os.getenv("MINIPROPHET_GLOBAL_CONFIG_DIR") or user_config_dir("mini-llm-prophet")) or global_dir
+global_config_dir.mkdir(parents=True, exist_ok=True)
+global_config_file = Path(global_config_dir) / ".env"
+
+load_dotenv(dotenv_path=global_config_file)
 
 
 class Model(Protocol):

@@ -1,4 +1,4 @@
-"""Configuration loading utilities for mini-llm-prophet."""
+"""Configuration loading utilities for mini-llm-prophet. Code is adapted from mini-swe-agent."""
 
 import json
 import os

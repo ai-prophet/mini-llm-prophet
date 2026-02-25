@@ -22,16 +22,29 @@ If you only use Brave search, `pip install -e .` is enough.
 
 ## Set API keys
 
-```bash
-export PERPLEXITY_API_KEY="your-perplexity-key"  # default search backend
-# or
-export BRAVE_API_KEY="your-brave-key"
+Use the built-in CLI to persist keys into prophet's global `.env` file:
 
-# if using OpenRouter model class
-export OPENROUTER_API_KEY="your-openrouter-key"
+```bash
+# direct set
+prophet set PERPLEXITY_API_KEY "your-perplexity-key"
+prophet set BRAVE_API_KEY "your-brave-key"
+prophet set OPENROUTER_API_KEY "your-openrouter-key"
+
+# interactive editor
+prophet set -i
 ```
 
-`.env` in project root is loaded automatically.
+By default, prophet stores and loads values from:
+
+- `~/.config/mini-llm-prophet/.env` (in linux; or your platform's equivalent config directory)
+
+To use a different global config directory, set:
+
+```bash
+export MINIPROPHET_GLOBAL_CONFIG_DIR="/path/to/custom/config-dir"
+```
+
+You can still set environment variables directly in your shell if you prefer.
 
 ## Try this
 
