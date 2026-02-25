@@ -65,3 +65,6 @@ search:
     total_timeout: 30
     max_retries: 3
     max_extract_chars: 3000
+
+batch:
+  timeout: 180  # 3 minutes

@@ -20,6 +20,7 @@ prophet batch -f <input.jsonl> -o <output_dir> [options]
 | `--model` | `-m` | Model override |
 | `--model-class` |  | Model class override |
 | `--config` | `-c` | Config file(s) or `key=value` overrides |
+| `--resume` |  | Resume from existing `summary.json` and skip already-seen run IDs |
 
 ## Try it with the example file
 
@@ -30,6 +31,24 @@ prophet batch \
   -w 4 \
   --model-class litellm \
   --model gemini/gemini-3-flash-preview
+```
+
+Resume a partial run:
+
+```bash
+prophet batch \
+  -f examples/example_batch_job.jsonl \
+  -o outputs/batch-demo \
+  --resume
+```
+
+Set per-run timeout to 5 minutes:
+
+```bash
+prophet batch \
+  -f examples/example_batch_job.jsonl \
+  -o outputs/batch-demo \
+  -c batch.timeout=300
 ```
 
 ## Input format (one JSON object per line)
@@ -57,6 +76,22 @@ Validation behavior:
 - missing `title`/`outcomes` fails validation
 - duplicate `run_id` fails validation
 
+`end_time` behavior:
+
+- accepts common datetime/date strings
+- converted internally to `MM/DD/YYYY`
+- forwarded to search backends as `search_date_before`
+
+## Resume mode (`--resume`)
+
+When `--resume` is enabled, batch startup checks `<output_dir>/summary.json`:
+
+- if the file exists, all run IDs already present in summary are skipped
+- if output dir or summary does not exist, resume behaves like a fresh run
+- if summary contains any run ID not present in the current input file, batch exits with an error
+
+This strict check prevents mixing results from different input sets.
+
 ## Execution model
 
 ```mermaid
@@ -76,7 +111,24 @@ Operational details:
 - workers consume jobs from a shared queue
 - rate-limit errors can be retried (up to max retries)
 - global max cost can stop later runs (`skipped_cost_limit`)
+- per-run timeout is enforced (`batch.timeout`, default `180s`)
+- timed-out runs are reported as `BatchRunTimeoutError`
 - each run still writes `info.json` + `trajectory.json`
+
+## Timeout config
+
+Default config:
+
+```yaml
+batch:
+  timeout: 180
+```
+
+Notes:
+
+- value is in seconds
+- `0` disables timeout
+- applies per run (not whole batch)
 
 ## Output layout
 
@@ -87,3 +139,5 @@ Given `-o outputs/batch-demo`:
 - `outputs/batch-demo/runs/<run_id>/trajectory.json`
 
 `summary.json` includes status, costs, submission/evaluation, and output path per run.
+
+In resume mode, `summary.json` keeps previous completed runs and appends newly processed runs.

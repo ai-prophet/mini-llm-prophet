@@ -10,7 +10,7 @@ from pathlib import Path
 from queue import Queue
 
 from miniprophet.agent.batch_agent import BatchForecastAgent, RateLimitCoordinator
-from miniprophet.exceptions import SearchAuthError, SearchRateLimitError
+from miniprophet.exceptions import BatchRunTimeoutError, SearchAuthError, SearchRateLimitError
 from miniprophet.run.batch_progress import BatchProgressManager
 
 logger = logging.getLogger("miniprophet.batch")
@@ -34,7 +34,7 @@ class ForecastProblem:
     def __post_init__(self):
         if self.end_time:
             try:
-                self.end_time = to_mm_dd_yy(self.end_time)
+                self.end_time = to_mm_dd_yyyy(self.end_time)
             except ValueError:
                 self.end_time = None
 
@@ -54,6 +54,24 @@ class RunResult:
     error: str | None = None
     output_dir: str = ""
 
+    @classmethod
+    def from_dict(cls, payload: dict) -> RunResult:
+        cost = payload.get("cost", {}) if isinstance(payload.get("cost", {}), dict) else {}
+        return cls(
+            run_id=str(payload.get("run_id", "")),
+            title=str(payload.get("title", "")),
+            status=str(payload.get("status", "pending")),
+            cost={
+                "model": float(cost.get("model", 0.0) or 0.0),
+                "search": float(cost.get("search", 0.0) or 0.0),
+                "total": float(cost.get("total", 0.0) or 0.0),
+            },
+            submission=payload.get("submission"),
+            evaluation=payload.get("evaluation"),
+            error=payload.get("error"),
+            output_dir=str(payload.get("output_dir", "")),
+        )
+
     def to_dict(self) -> dict:
         return {
             "run_id": self.run_id,
@@ -67,11 +85,11 @@ class RunResult:
         }
 
 
-def to_mm_dd_yy(dt_str: str) -> str:
+def to_mm_dd_yyyy(dt_str: str) -> str:
     from dateutil import parser
 
     dt = parser.parse(dt_str)
-    return dt.strftime("%m/%d/%y")
+    return dt.strftime("%m/%d/%Y")
 
 
 def load_problems(path: Path) -> list[ForecastProblem]:
@@ -116,6 +134,35 @@ def load_problems(path: Path) -> list[ForecastProblem]:
     return problems
 
 
+def load_existing_summary(path: Path) -> tuple[dict[str, RunResult], float]:
+    """Load existing summary.json into RunResult mapping and total_cost.
+
+    Returns empty state when summary file does not exist.
+    """
+    if not path.exists():
+        return {}, 0.0
+
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid summary JSON at {path}: {exc}") from exc
+
+    runs = data.get("runs", [])
+    if not isinstance(runs, list):
+        raise ValueError(f"Invalid summary format at {path}: 'runs' must be a list")
+
+    results: dict[str, RunResult] = {}
+    for item in runs:
+        if not isinstance(item, dict):
+            continue
+        run = RunResult.from_dict(item)
+        if run.run_id:
+            results[run.run_id] = run
+
+    total_cost = float(data.get("total_cost", 0.0) or 0.0)
+    return results, total_cost
+
+
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Check if an exception indicates a rate limit (retryable)."""
     if isinstance(exc, RETRYABLE_EXCEPTIONS):
@@ -135,6 +182,7 @@ def process_problem(
     results: dict[str, RunResult],
     total_cost_ref: list[float],
     max_cost: float,
+    timeout_seconds: float,
 ) -> bool:
     """Process a single forecasting problem. Returns True if successful or permanently failed."""
     from miniprophet.agent.context import SlidingWindowContextManager
@@ -151,6 +199,7 @@ def process_problem(
     progress.on_run_start(run_id)
 
     agent = None
+    timed_out = False
     try:
         if max_cost > 0 and total_cost_ref[0] >= max_cost:
             result.status = "skipped_cost_limit"
@@ -197,12 +246,35 @@ def process_problem(
             else {}
         )
 
-        forecast = agent.run(
-            title=problem.title,
-            outcomes=problem.outcomes,
-            ground_truth=problem.ground_truth,
-            **runtime_kwargs,
-        )
+        if timeout_seconds > 0:
+            import concurrent.futures
+
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(
+                agent.run,
+                title=problem.title,
+                outcomes=problem.outcomes,
+                ground_truth=problem.ground_truth,
+                **runtime_kwargs,
+            )
+            try:
+                forecast = future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError as exc:
+                future.cancel()
+                # Best-effort release of the batch worker without waiting for this run.
+                executor.shutdown(wait=False, cancel_futures=True)
+                raise BatchRunTimeoutError(
+                    f"Batch run timed out after {timeout_seconds:.1f}s"
+                ) from exc
+            else:
+                executor.shutdown(wait=True)
+        else:
+            forecast = agent.run(
+                title=problem.title,
+                outcomes=problem.outcomes,
+                ground_truth=problem.ground_truth,
+                **runtime_kwargs,
+            )
 
         result.status = forecast.get("exit_status", "unknown")
         result.submission = forecast.get("submission") or None
@@ -221,6 +293,13 @@ def process_problem(
 
     except SearchAuthError as exc:
         result.status = "auth_error"
+        result.error = str(exc)
+        progress.on_run_end(run_id, result.status)
+        return True
+
+    except BatchRunTimeoutError as exc:
+        timed_out = True
+        result.status = type(exc).__name__
         result.error = str(exc)
         progress.on_run_end(run_id, result.status)
         return True
@@ -246,7 +325,7 @@ def process_problem(
         return True
 
     finally:
-        if agent is not None:
+        if agent is not None and not timed_out:
             try:
                 agent.save(run_dir)
             except Exception:
@@ -278,6 +357,9 @@ def run_batch(
     *,
     workers: int = 1,
     max_cost: float = 0.0,
+    timeout_seconds: float = 180.0,
+    initial_results: dict[str, RunResult] | None = None,
+    initial_total_cost: float = 0.0,
 ) -> dict[str, RunResult]:
     """Execute a batch of forecasting problems with parallel workers."""
     import concurrent.futures
@@ -287,11 +369,11 @@ def run_batch(
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "summary.json"
     summary_lock = threading.Lock()
-    total_cost_ref: list[float] = [0.0]
+    total_cost_ref: list[float] = [float(initial_total_cost)]
 
     coordinator = RateLimitCoordinator()
     progress = BatchProgressManager(len(problems))
-    results: dict[str, RunResult] = {}
+    results: dict[str, RunResult] = dict(initial_results or {})
 
     queue: Queue[ForecastProblem] = Queue()
     for p in problems:
@@ -316,6 +398,7 @@ def run_batch(
                 results,
                 total_cost_ref,
                 max_cost,
+                timeout_seconds,
             )
             if not done:
                 queue.put(problem)

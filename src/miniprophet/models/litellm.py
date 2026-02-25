@@ -152,7 +152,6 @@ class LitellmModel:
             msg: dict[str, Any] = {
                 "content": content,
                 "extra": {
-                    "raw_output": raw,
                     "error": output.get("error", False),
                     "search_cost": output.get("search_cost", 0.0),
                     "timestamp": time.time(),

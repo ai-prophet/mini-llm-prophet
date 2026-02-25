@@ -42,3 +42,12 @@ class SearchRateLimitError(SearchError):
 
 class SearchNetworkError(SearchError):
     """Network/connection error -- retryable."""
+
+
+"""
+Batch-processing related errors.
+"""
+
+
+class BatchRunTimeoutError(Exception):
+    """Raised when a single batch run exceeds the configured timeout."""

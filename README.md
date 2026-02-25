@@ -62,6 +62,12 @@ prophet batch \
   --model gemini/gemini-3-flash-preview
 ```
 
+Resume an interrupted batch and skip completed run IDs:
+
+```bash
+prophet batch -f examples/example_batch_job.jsonl -o outputs/batch-demo --resume
+```
+
 ## Docs
 
 Detailed docs are split by topic:

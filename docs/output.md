@@ -83,3 +83,10 @@ For batch output directory `<out>`:
 - `<out>/runs/<run_id>/trajectory.json`
 
 Use `summary.json` to find failed/submitted runs, then open each run's trajectory for detailed debugging.
+
+Common batch statuses you may see in `summary.json` include:
+
+- `submitted`
+- `BatchRunTimeoutError` (run exceeded `batch.timeout`)
+- `skipped_cost_limit`
+- auth/network/rate-limit related error statuses

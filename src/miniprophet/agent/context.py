@@ -50,9 +50,15 @@ class SlidingWindowContextManager:
         if len(body) <= self.window_size:
             return preamble + body
 
-        newly_removed = len(body) - self.window_size
+        # we make sure that we do not truncate away any tool call (so the tool response is not lost)
+        if body[-self.window_size]["role"] == "tool":
+            effective_window_size = self.window_size + 1
+        else:
+            effective_window_size = self.window_size
+
+        newly_removed = len(body) - effective_window_size
         self._total_truncated += newly_removed
-        kept = body[-self.window_size :]
+        kept = body[-effective_window_size:]
 
         lines = [
             f"[Context truncated: {self._total_truncated} earlier messages have been "
