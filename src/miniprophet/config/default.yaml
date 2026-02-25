@@ -53,6 +53,7 @@ search:
   search_results_limit: 5
   max_source_display_chars: 200
   search_date_before: null
+  search_date_after: null
 
   perplexity:
     timeout: 30

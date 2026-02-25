@@ -19,6 +19,76 @@ app = typer.Typer(
 console = get_console()
 
 
+def _build_batch_config(
+    config_spec: list[str] | None,
+    max_cost_per_run: float | None,
+    model_name: str | None,
+    model_class: str | None,
+) -> dict:
+    from miniprophet.config import get_config_from_spec
+
+    configs = [get_config_from_spec("default")]
+    for spec in config_spec or []:
+        configs.append(get_config_from_spec(spec))
+
+    configs.append(
+        {
+            "agent": {
+                "cost_limit": max_cost_per_run or UNSET,
+                "output_path": UNSET,
+            },
+            "model": {
+                "model_name": model_name or UNSET,
+                "model_class": model_class or UNSET,
+            },
+        }
+    )
+    return recursive_merge(*configs)
+
+
+def _resolve_resume_state(
+    *,
+    enabled: bool,
+    output: Path,
+    problems: list,
+) -> tuple[list, dict, float]:
+    from miniprophet.run.batch_runner import load_existing_summary
+
+    if not enabled:
+        return problems, {}, 0.0
+
+    summary_path = output / "summary.json"
+    if not summary_path.exists():
+        console.print("  Resume mode: no existing summary.json found, starting fresh.")
+        return problems, {}, 0.0
+
+    try:
+        resume_results, resume_total_cost = load_existing_summary(summary_path)
+    except ValueError as exc:
+        console.print(f"[bold red]Error:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+
+    input_run_ids = {p.run_id for p in problems}
+    unexpected = sorted(set(resume_results) - input_run_ids)
+    if unexpected:
+        preview = ", ".join(unexpected[:10])
+        suffix = " ..." if len(unexpected) > 10 else ""
+        console.print(
+            "[bold red]Error:[/bold red] Resume summary contains run_ids not present "
+            f"in the input file: {preview}{suffix}"
+        )
+        raise typer.Exit(1)
+
+    original_count = len(problems)
+    filtered_problems = [p for p in problems if p.run_id not in resume_results]
+    skipped = original_count - len(filtered_problems)
+    console.print(
+        f"  Resume mode: skipping [cyan]{skipped}[/cyan] existing run(s), "
+        f"[cyan]{len(filtered_problems)}[/cyan] remaining."
+    )
+    return filtered_problems, resume_results, resume_total_cost
+
+
 @app.callback(invoke_without_command=True)
 def main(
     input_file: Path = typer.Option(
@@ -46,15 +116,28 @@ def main(
         "--resume",
         help="Resume from existing output summary: skip already-seen run_ids.",
     ),
+    search_date_before: str | None = typer.Option(
+        None, "--search-date-before", help="Search date before (MM/DD/YYYY) for search upper bound."
+    ),
+    search_date_after: str | None = typer.Option(
+        None, "--search-date-after", help="Search date after (MM/DD/YYYY) for search lower bound."
+    ),
     offset: int = typer.Option(
-        0, "--offset", help="Offset how many days before the end time for search upper bound."
+        0,
+        "--offset",
+        help="Offset how many days before the `search_date_before`. Cannot combine with `--search-date-before`.",
     ),
 ) -> None:
     """Run the forecasting agent on a batch of problems from a JSONL file."""
-    from miniprophet.config import get_config_from_spec
-    from miniprophet.run.batch_runner import load_existing_summary, load_problems, run_batch
+    from miniprophet.run.batch_runner import BatchRunArgs, load_problems, run_batch
 
     print_cli_banner(__version__, mode_label="batch mode")
+
+    if search_date_before is not None and offset != 0:
+        console.print(
+            "[bold red]Error:[/bold red] Cannot combine `--search-date-before` and `--offset`."
+        )
+        raise typer.Exit(1)
 
     if not input_file.exists():
         console.print(f"[bold red]Error:[/bold red] Input file not found: {input_file}")
@@ -73,56 +156,10 @@ def main(
     console.print(f"  Loaded [cyan]{len(problems)}[/cyan] problem(s) from {input_file}")
     console.print(f"  Workers: [cyan]{workers}[/cyan]  Output: [cyan]{output}[/cyan]\n")
 
-    configs = [get_config_from_spec("default")]
-    for spec in config_spec or []:
-        configs.append(get_config_from_spec(spec))
-
-    configs.append(
-        {
-            "agent": {
-                "cost_limit": max_cost_per_run or UNSET,
-                "output_path": UNSET,
-            },
-            "model": {
-                "model_name": model_name or UNSET,
-                "model_class": model_class or UNSET,
-            },
-        }
+    config = _build_batch_config(config_spec, max_cost_per_run, model_name, model_class)
+    problems, resume_results, resume_total_cost = _resolve_resume_state(
+        enabled=resume, output=output, problems=problems
     )
-
-    config = recursive_merge(*configs)
-
-    resume_results = {}
-    resume_total_cost = 0.0
-    if resume:
-        summary_path = output / "summary.json"
-        if summary_path.exists():
-            try:
-                resume_results, resume_total_cost = load_existing_summary(summary_path)
-            except ValueError as exc:
-                console.print(f"[bold red]Error:[/bold red] {exc}")
-                raise typer.Exit(1)
-
-            input_run_ids = {p.run_id for p in problems}
-            unexpected = sorted(set(resume_results) - input_run_ids)
-            if unexpected:
-                preview = ", ".join(unexpected[:10])
-                suffix = " ..." if len(unexpected) > 10 else ""
-                console.print(
-                    "[bold red]Error:[/bold red] Resume summary contains run_ids not present "
-                    f"in the input file: {preview}{suffix}"
-                )
-                raise typer.Exit(1)
-
-            original_count = len(problems)
-            problems = [p for p in problems if p.run_id not in resume_results]
-            skipped = original_count - len(problems)
-            console.print(
-                f"  Resume mode: skipping [cyan]{skipped}[/cyan] existing run(s), "
-                f"[cyan]{len(problems)}[/cyan] remaining."
-            )
-        else:
-            console.print("  Resume mode: no existing summary.json found, starting fresh.")
 
     if not problems:
         console.print("[bold yellow]No remaining runs to process.[/bold yellow]")
@@ -131,16 +168,18 @@ def main(
     batch_cfg = config.get("batch", {})
     timeout_seconds = max(0.0, float(batch_cfg.get("timeout", 180.0)))
 
-    results = run_batch(
-        problems,
-        output,
-        config,
+    run_args = BatchRunArgs(
+        output_dir=output,
+        config=config,
         workers=workers,
         max_cost=max_cost,
         timeout_seconds=timeout_seconds,
         initial_results=resume_results,
         initial_total_cost=resume_total_cost,
+        search_date_before=search_date_before,
+        search_date_after=search_date_after,
     )
+    results = run_batch(problems, run_args)
 
     n_submitted = sum(1 for r in results.values() if r.status == "submitted")
     n_failed = sum(1 for r in results.values() if r.status not in ("submitted", "pending"))

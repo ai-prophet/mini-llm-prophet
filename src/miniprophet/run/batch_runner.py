@@ -86,6 +86,33 @@ class RunResult:
         }
 
 
+@dataclass
+class BatchRunArgs:
+    """Runtime arguments for a batch execution."""
+
+    output_dir: Path
+    config: dict
+    workers: int = 1
+    max_cost: float = 0.0
+    timeout_seconds: float = 180.0
+    initial_results: dict[str, RunResult] | None = None
+    initial_total_cost: float = 0.0
+    search_date_before: str | None = None
+    search_date_after: str | None = None
+
+
+@dataclass
+class BatchRunState:
+    """Shared mutable state for workers in a single batch execution."""
+
+    coordinator: RateLimitCoordinator
+    progress: BatchProgressManager
+    summary_lock: threading.Lock
+    summary_path: Path
+    results: dict[str, RunResult]
+    total_cost_ref: list[float]
+
+
 def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
     from datetime import timedelta
 
@@ -175,18 +202,21 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in exc_str or "rate limit" in exc_str
 
 
+def _write_summary(args: BatchRunArgs, state: BatchRunState) -> None:
+    summary = {
+        "batch_config": {k: v for k, v in args.config.items() if k != "agent"},
+        "total_cost": state.total_cost_ref[0],
+        "runs": [r.to_dict() for r in state.results.values()],
+    }
+    with state.summary_lock:
+        state.summary_path.parent.mkdir(parents=True, exist_ok=True)
+        state.summary_path.write_text(json.dumps(summary, indent=2))
+
+
 def process_problem(
     problem: ForecastProblem,
-    output_dir: Path,
-    config: dict,
-    coordinator: RateLimitCoordinator,
-    progress: BatchProgressManager,
-    summary_lock: threading.Lock,
-    summary_path: Path,
-    results: dict[str, RunResult],
-    total_cost_ref: list[float],
-    max_cost: float,
-    timeout_seconds: float,
+    args: BatchRunArgs,
+    state: BatchRunState,
 ) -> bool:
     """Process a single forecasting problem. Returns True if successful or permanently failed."""
     from miniprophet.agent.context import SlidingWindowContextManager
@@ -196,26 +226,26 @@ def process_problem(
     from miniprophet.search import get_search_tool
 
     run_id = problem.run_id
-    run_dir = output_dir / "runs" / run_id
-    result = results.setdefault(run_id, RunResult(run_id=run_id, title=problem.title))
+    run_dir = args.output_dir / "runs" / run_id
+    result = state.results.setdefault(run_id, RunResult(run_id=run_id, title=problem.title))
     result.output_dir = f"runs/{run_id}"
 
-    progress.on_run_start(run_id)
+    state.progress.on_run_start(run_id)
 
     agent = None
     timed_out = False
     try:
-        if max_cost > 0 and total_cost_ref[0] >= max_cost:
+        if args.max_cost > 0 and state.total_cost_ref[0] >= args.max_cost:
             result.status = "skipped_cost_limit"
-            result.error = f"Total batch cost limit (${max_cost:.2f}) reached."
-            progress.on_run_end(run_id, result.status)
+            result.error = f"Total batch cost limit (${args.max_cost:.2f}) reached."
+            state.progress.on_run_end(run_id, result.status)
             return True
 
-        model = get_model(config=config.get("model", {}))
-        search_cfg = config.get("search", {})
+        model = get_model(config=args.config.get("model", {}))
+        search_cfg = args.config.get("search", {})
         search_backend = get_search_tool(search_cfg=search_cfg)
 
-        agent_cfg = config.get("agent", {})
+        agent_cfg = args.config.get("agent", {})
         agent_search_limit = agent_cfg.get("search_limit", 10)
         board = SourceBoard()
         tools = create_default_tools(
@@ -237,20 +267,17 @@ def process_problem(
             env=env,
             context_manager=ctx_mgr,
             run_id=run_id,
-            coordinator=coordinator,
-            progress_manager=progress,
+            coordinator=state.coordinator,
+            progress_manager=state.progress,
             **agent_cfg,
         )
 
-        runtime_kwargs = (
-            {
-                "search_date_before": problem.end_time,
-            }
-            if problem.end_time
-            else {}
-        )
+        runtime_kwargs = {
+            "search_date_before": args.search_date_before or problem.end_time,
+            "search_date_after": args.search_date_after,
+        }
 
-        if timeout_seconds > 0:
+        if args.timeout_seconds > 0:
             import concurrent.futures
 
             executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -262,13 +289,13 @@ def process_problem(
                 **runtime_kwargs,
             )
             try:
-                forecast = future.result(timeout=timeout_seconds)
+                forecast = future.result(timeout=args.timeout_seconds)
             except concurrent.futures.TimeoutError as exc:
                 future.cancel()
                 # Best-effort release of the batch worker without waiting for this run.
                 executor.shutdown(wait=False, cancel_futures=True)
                 raise BatchRunTimeoutError(
-                    f"Batch run timed out after {timeout_seconds:.1f}s"
+                    f"Batch run timed out after {args.timeout_seconds:.1f}s"
                 ) from exc
             else:
                 executor.shutdown(wait=True)
@@ -289,28 +316,28 @@ def process_problem(
             "total": agent.total_cost,
         }
 
-        with summary_lock:
-            total_cost_ref[0] += agent.total_cost
+        with state.summary_lock:
+            state.total_cost_ref[0] += agent.total_cost
 
-        progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(run_id, result.status)
         return True
 
     except SearchAuthError as exc:
         result.status = "auth_error"
         result.error = str(exc)
-        progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(run_id, result.status)
         return True
 
     except BatchRunTimeoutError as exc:
         timed_out = True
         result.status = type(exc).__name__
         result.error = str(exc)
-        progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(run_id, result.status)
         return True
 
     except Exception as exc:
         if _is_rate_limit_error(exc):
-            coordinator.signal_rate_limit()
+            state.coordinator.signal_rate_limit()
             if problem.retries < MAX_RETRIES:
                 problem.retries += 1
                 logger.warning(
@@ -319,13 +346,13 @@ def process_problem(
                     problem.retries,
                     MAX_RETRIES,
                 )
-                progress.on_run_end(run_id, f"rate_limited (retry {problem.retries})")
+                state.progress.on_run_end(run_id, f"rate_limited (retry {problem.retries})")
                 return False
 
         result.status = type(exc).__name__
         result.error = str(exc)
         logger.error("Run %s failed: %s", run_id, exc, exc_info=True)
-        progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(run_id, result.status)
         return True
 
     finally:
@@ -334,50 +361,27 @@ def process_problem(
                 agent.save(run_dir)
             except Exception:
                 logger.error("Failed to save trajectory for %s", run_id, exc_info=True)
-        _write_summary(summary_lock, summary_path, config, results, total_cost_ref[0])
-
-
-def _write_summary(
-    lock: threading.Lock,
-    path: Path,
-    config: dict,
-    results: dict[str, RunResult],
-    total_cost: float,
-) -> None:
-    summary = {
-        "batch_config": {k: v for k, v in config.items() if k != "agent"},
-        "total_cost": total_cost,
-        "runs": [r.to_dict() for r in results.values()],
-    }
-    with lock:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(summary, indent=2))
+        _write_summary(args, state)
 
 
 def run_batch(
     problems: list[ForecastProblem],
-    output_dir: Path,
-    config: dict,
-    *,
-    workers: int = 1,
-    max_cost: float = 0.0,
-    timeout_seconds: float = 180.0,
-    initial_results: dict[str, RunResult] | None = None,
-    initial_total_cost: float = 0.0,
+    args: BatchRunArgs,
 ) -> dict[str, RunResult]:
     """Execute a batch of forecasting problems with parallel workers."""
     import concurrent.futures
 
     from rich.live import Live
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = output_dir / "summary.json"
-    summary_lock = threading.Lock()
-    total_cost_ref: list[float] = [float(initial_total_cost)]
-
-    coordinator = RateLimitCoordinator()
-    progress = BatchProgressManager(len(problems))
-    results: dict[str, RunResult] = dict(initial_results or {})
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    state = BatchRunState(
+        coordinator=RateLimitCoordinator(),
+        progress=BatchProgressManager(len(problems)),
+        summary_lock=threading.Lock(),
+        summary_path=args.output_dir / "summary.json",
+        results=dict(args.initial_results or {}),
+        total_cost_ref=[float(args.initial_total_cost)],
+    )
 
     queue: Queue[ForecastProblem] = Queue()
     for p in problems:
@@ -391,26 +395,14 @@ def run_batch(
                 if queue.empty():
                     return
                 continue
-            done = process_problem(
-                problem,
-                output_dir,
-                config,
-                coordinator,
-                progress,
-                summary_lock,
-                summary_path,
-                results,
-                total_cost_ref,
-                max_cost,
-                timeout_seconds,
-            )
+            done = process_problem(problem, args, state)
             if not done:
                 queue.put(problem)
             queue.task_done()
 
-    with Live(progress.render_group, refresh_per_second=4):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = [executor.submit(worker_loop) for _ in range(workers)]
+    with Live(state.progress.render_group, refresh_per_second=4):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = [executor.submit(worker_loop) for _ in range(args.workers)]
             try:
                 queue.join()
             except KeyboardInterrupt:
@@ -421,5 +413,5 @@ def run_batch(
                 except Exception:
                     pass
 
-    _write_summary(summary_lock, summary_path, config, results, total_cost_ref[0])
-    return results
+    _write_summary(args, state)
+    return state.results

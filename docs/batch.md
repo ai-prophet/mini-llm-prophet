@@ -23,6 +23,9 @@ Batch runs that enable multiple workers performing efficient forecasting (or eva
 | `--model-class` |  | Model class override |
 | `--config` | `-c` | Config file(s) or `key=value` overrides |
 | `--resume` |  | Resume from existing `summary.json` and skip already-seen run IDs |
+| `--search-date-before` |  | Global search upper-bound date (`MM/DD/YYYY`) |
+| `--search-date-after` |  | Global search lower-bound date (`MM/DD/YYYY`) |
+| `--offset` |  | Days to subtract from each row's `end_time` when deriving upper bound |
 
 ## Try it with the example file
 
@@ -64,7 +67,7 @@ Optional fields:
 
 - `run_id` (string): unique id for this run (auto-generated as `run_<n>` if omitted)
 - `ground_truth` (object): used for evaluation metrics
-- `end_time` (string): parsed and forwarded as search upper-bound date (`search_date_before`)
+- `end_time` (string): parsed and forwarded as per-row search upper-bound date
 
 Example line:
 
@@ -82,7 +85,11 @@ Validation behavior:
 
 - accepts common datetime/date strings
 - converted internally to `MM/DD/YYYY`
-- forwarded to search backends as `search_date_before`
+- forwarded to search backends as `search_date_before` for that row
+- when `--offset N` is set, this derived value becomes `end_time - N days`
+- `--search-date-before` (if provided) overrides row-level `end_time` bounds
+- `--search-date-before` cannot be combined with nonzero `--offset`
+- `--search-date-after` applies globally to all rows
 
 ## Resume mode (`--resume`)
 
