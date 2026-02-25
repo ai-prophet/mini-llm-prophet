@@ -1,4 +1,4 @@
-<p align="left">
+<p align="center">
   <img src="./assets/icon.svg" alt="mini-llm-prophet icon" style="height:10em"/>
 </p>
 
