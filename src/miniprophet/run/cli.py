@@ -9,6 +9,7 @@ import typer
 from rich.prompt import Confirm, Prompt
 
 from miniprophet import __version__
+from miniprophet.cli.components.banner import print_cli_banner
 from miniprophet.cli.utils import get_console
 from miniprophet.utils.serialize import UNSET, recursive_merge
 
@@ -47,7 +48,9 @@ def main(
         None, "--config", "-c", help="Config file(s) or key=value overrides."
     ),
     output: Path | None = typer.Option(
-        None, "--output", help="Output directory for run artifacts (info.json + trajectory.json)."
+        None,
+        "--output",
+        help="Output directory for run artifacts (info.json + trajectory.json + sources.json).",
     ),
     model_class: str | None = typer.Option(
         None, "--model-class", help="Override model class (e.g. openrouter, litellm)."
@@ -62,7 +65,7 @@ def main(
     from miniprophet.models import get_model
     from miniprophet.search import get_search_tool
 
-    console.print(f"[bold green]mini-llm-prophet[/bold green] v{__version__}\n")
+    print_cli_banner(__version__, mode_label="single run")
 
     # ---- Resolve title, outcomes, ground_truth ----
     ground_truth: dict[str, int] | None = None

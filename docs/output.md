@@ -8,8 +8,9 @@ When output is enabled (`--output` for single run, or batch run directories), ea
 
 - `info.json`
 - `trajectory.json`
+- `sources.json`
 
-`DefaultForecastAgent.save(...)` writes both files, and is called in a `finally` block during run steps, so artifacts stay up to date as the run progresses.
+`DefaultForecastAgent.save(...)` writes all three files, and is called in a `finally` block during run steps, so artifacts stay up to date as the run progresses.
 
 ## `info.json`
 
@@ -20,7 +21,22 @@ Contains run metadata such as:
 - exit status
 - submission
 - evaluation (if ground truth provided)
-- serialized source board
+- serialized source board (kept for backward compatibility)
+
+## `sources.json`
+
+Contains source-provenance state in structured JSON form:
+
+- `sources`: all raw search sources keyed by global source id (`S1`, `S2`, ...)
+- `source_board`: final board state in compact reference form
+
+`source_board` entries are designed to avoid duplication. Each entry includes:
+
+- `source_id` (link to `sources[source_id]`)
+- `note`
+- `reaction`
+
+If a board entry has no `source_id`, a minimal fallback `source` object is stored so the relationship can still be recovered.
 
 ## `trajectory.json`
 
@@ -74,6 +90,21 @@ print("Input roles:", [m["role"] for m in input_messages])
 print("Output role:", output_message["role"])
 ```
 
+Resolve board entries back to raw sources:
+
+```python
+import json
+from pathlib import Path
+
+payload = json.loads(Path("outputs/my-run/sources.json").read_text())
+raw_sources = payload["sources"]
+
+for entry in payload["source_board"]:
+    sid = entry.get("source_id")
+    source = raw_sources.get(sid, {}) if sid else entry.get("source", {})
+    print(sid, source.get("title", ""))
+```
+
 ## Batch output layout
 
 For batch output directory `<out>`:
@@ -81,8 +112,9 @@ For batch output directory `<out>`:
 - `<out>/summary.json`
 - `<out>/runs/<run_id>/info.json`
 - `<out>/runs/<run_id>/trajectory.json`
+- `<out>/runs/<run_id>/sources.json`
 
-Use `summary.json` to find failed/submitted runs, then open each run's trajectory for detailed debugging.
+Use `summary.json` to find failed/submitted runs, then open each run's trajectory and sources for detailed debugging.
 
 Common batch statuses you may see in `summary.json` include:
 

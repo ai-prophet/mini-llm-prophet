@@ -29,7 +29,7 @@ prophet run --title "..." --outcomes "Yes,No"
 | `--search-limit` |  | Max search tool calls |
 | `--step-limit` |  | Max loop steps |
 | `--config` | `-c` | Config file(s) or `key=value` overrides |
-| `--output` |  | Output directory (`info.json`, `trajectory.json`) |
+| `--output` |  | Output directory (`info.json`, `trajectory.json`, `sources.json`) |
 
 ## Examples
 

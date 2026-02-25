@@ -30,6 +30,7 @@ class BoardEntry:
     """A source on the board, annotated with the model's analytical note."""
 
     id: int
+    source_id: str | None
     source: Source
     note: str
     reaction: dict[str, str] = field(default_factory=dict)
@@ -45,8 +46,20 @@ class SourceBoard:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def add(self, source: Source, note: str, reaction: dict[str, str] | None = None) -> BoardEntry:
-        entry = BoardEntry(id=self._next_id, source=source, note=note, reaction=reaction or {})
+    def add(
+        self,
+        source: Source,
+        note: str,
+        reaction: dict[str, str] | None = None,
+        source_id: str | None = None,
+    ) -> BoardEntry:
+        entry = BoardEntry(
+            id=self._next_id,
+            source_id=source_id,
+            source=source,
+            note=note,
+            reaction=reaction or {},
+        )
         self._entries.append(entry)
         self._next_id += 1
         return entry
@@ -97,6 +110,7 @@ class SourceBoard:
         return [
             {
                 "id": e.id,
+                "source_id": e.source_id,
                 "source": {
                     "url": e.source.url,
                     "title": e.source.title,

@@ -151,7 +151,7 @@ class AddSourceTool:
             }
 
         source = self._source_registry[source_id]
-        entry = self._board.add(source, note, reaction=reaction)
+        entry = self._board.add(source, note, reaction=reaction, source_id=source_id)
         return {"output": f"Source {source_id} added to board as #{entry.id}."}
 
     def display(self, output: dict) -> None:

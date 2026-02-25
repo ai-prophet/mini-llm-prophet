@@ -8,6 +8,8 @@ This page covers `prophet batch` for running many forecasting jobs from a JSONL 
 prophet batch -f <input.jsonl> -o <output_dir> [options]
 ```
 
+Batch runs that enable multiple workers performing efficient forecasting (or evaluation) in parallel.
+
 ### Options
 
 | Flag | Short | Description |
@@ -113,7 +115,7 @@ Operational details:
 - global max cost can stop later runs (`skipped_cost_limit`)
 - per-run timeout is enforced (`batch.timeout`, default `180s`)
 - timed-out runs are reported as `BatchRunTimeoutError`
-- each run still writes `info.json` + `trajectory.json`
+- each run writes `info.json` + `trajectory.json` + `sources.json`
 
 ## Timeout config
 
@@ -137,6 +139,7 @@ Given `-o outputs/batch-demo`:
 - `outputs/batch-demo/summary.json`
 - `outputs/batch-demo/runs/<run_id>/info.json`
 - `outputs/batch-demo/runs/<run_id>/trajectory.json`
+- `outputs/batch-demo/runs/<run_id>/sources.json`
 
 `summary.json` includes status, costs, submission/evaluation, and output path per run.
 

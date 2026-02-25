@@ -270,28 +270,25 @@ class DefaultForecastAgent:
         extra_merged = recursive_merge(*extra_dicts) if extra_dicts else {}
         return recursive_merge(agent_data, model_info, env_info, extra_merged)
 
-    def serialize_trajectory(self) -> dict:
-        """Serialize the full trajectory (message pool + per-step indices)."""
-        traj = self._trajectory.serialize()
-        traj["trajectory_format"] = f"mini-llm-prophet-v{__version__}"
-        return traj
-
     def serialize(self, *extra_dicts: dict) -> dict:
-        """Serialize both info and trajectory into a single dict (legacy compat)."""
-        return {
-            "info": self.serialize_info(*extra_dicts),
-            "trajectory": self.serialize_trajectory(),
-        }
+        """Serialize run artifacts into a single dict (legacy compat)."""
+        res = dict()
+        res["info"] = self.serialize_info(*extra_dicts)
+        res["trajectory"] = self._trajectory.serialize()
+        res["trajectory"]["trajectory_format"] = f"mini-llm-prophet-v{__version__}"
+        if hasattr(self.env, "serialize_sources_state"):
+            res["sources"] = self.env.serialize_sources_state()
+        return res
 
     def save(self, path: Path | None, *extra_dicts: dict) -> dict:
-        """Save run artifacts to a directory (info.json + trajectory.json).
+        """Save run artifacts to a directory (info.json + trajectory.json + sources.json).
 
         ``path`` is treated as a directory. If None, serialization is
         still performed but nothing is written to disk.
         """
-        data = self.serialize(*extra_dicts)
+        res = self.serialize(*extra_dicts)
         if path:
             path.mkdir(parents=True, exist_ok=True)
-            (path / "info.json").write_text(json.dumps(data["info"], indent=2))
-            (path / "trajectory.json").write_text(json.dumps(data["trajectory"], indent=2))
-        return data
+            for key, value in res.items():
+                (path / f"{key}.json").write_text(json.dumps(value, indent=2))
+        return res

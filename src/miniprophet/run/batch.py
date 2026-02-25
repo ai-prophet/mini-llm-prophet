@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from miniprophet import __version__
+from miniprophet.cli.components.banner import print_cli_banner
 from miniprophet.cli.utils import get_console
 from miniprophet.utils.serialize import UNSET, recursive_merge
 
@@ -53,9 +54,7 @@ def main(
     from miniprophet.config import get_config_from_spec
     from miniprophet.run.batch_runner import load_existing_summary, load_problems, run_batch
 
-    console.print(
-        f"[bold green]mini-llm-prophet[/bold green] v{__version__} [dim]batch mode[/dim]\n"
-    )
+    print_cli_banner(__version__, mode_label="batch mode")
 
     if not input_file.exists():
         console.print(f"[bold red]Error:[/bold red] Input file not found: {input_file}")

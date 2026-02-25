@@ -87,9 +87,36 @@ class ForecastEnvironment:
     def get_tool(self, name: str) -> Tool | None:
         return self._tools.get(name)
 
-    def serialize(self) -> dict:
+    def serialize_sources_state(self) -> dict:
+        """Serialize raw searched sources and compact board references."""
+        sources: dict[str, dict] = {}
+        search_tool = self.get_tool("search")
+        if search_tool is not None and hasattr(search_tool, "serialize_sources"):
+            payload = search_tool.serialize_sources()  # type: ignore[attr-defined]
+            if isinstance(payload, dict):
+                sources = payload
+
+        source_board: list[dict] = []
+        for entry in self.board.serialize():
+            board_entry = {
+                "source_id": entry.get("source_id"),
+                "note": entry.get("note", ""),
+                "reaction": entry.get("reaction", {}),
+            }
+            if not board_entry["source_id"]:
+                source = entry.get("source", {})
+                if isinstance(source, dict):
+                    board_entry["source"] = {
+                        "url": source.get("url", ""),
+                        "title": source.get("title", ""),
+                        "date": source.get("date"),
+                    }
+            source_board.append(board_entry)
+
         return {
-            "info": {
-                "board": self.board.serialize(),
-            },
+            "sources": sources,
+            "source_board": source_board,
         }
+
+    def serialize(self) -> dict:
+        return {}

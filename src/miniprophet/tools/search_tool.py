@@ -80,6 +80,24 @@ class SearchForecastTool:
         self._source_registry[sid] = source
         return sid
 
+    def serialize_sources(self) -> dict[str, dict[str, Any]]:
+        """Return all discovered sources keyed by stable source_id (S1, S2, ...)."""
+        items = sorted(
+            self._source_registry.items(),
+            key=lambda kv: int(kv[0][1:])
+            if kv[0].startswith("S") and kv[0][1:].isdigit()
+            else 10**9,
+        )
+        return {
+            sid: {
+                "url": src.url,
+                "title": src.title,
+                "snippet": src.snippet,
+                "date": src.date,
+            }
+            for sid, src in items
+        }
+
     def execute(self, args: dict) -> dict:
         query = args.get("query", "").strip()
         if not query:

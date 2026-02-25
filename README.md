@@ -68,6 +68,8 @@ Resume an interrupted batch and skip completed run IDs:
 prophet batch -f examples/example_batch_job.jsonl -o outputs/batch-demo --resume
 ```
 
+Run artifacts now include `sources.json` in addition to `info.json` and `trajectory.json`.
+
 ## Docs
 
 Detailed docs are split by topic:
