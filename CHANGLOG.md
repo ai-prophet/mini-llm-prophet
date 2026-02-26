@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### New: Exa search backend
+
+- Added `ExaSearchTool` (`search.search_class=exa`) using the official `exa-py` SDK.
+- Exa now supports direct content retrieval during search via configurable modes:
+  - `search.exa.content_mode=text` (uses `contents.text`)
+  - `search.exa.content_mode=highlights` (uses `contents.highlights`)
+- Runtime date filters are now mapped for Exa:
+  - `search_date_after` -> `start_published_date`
+  - `search_date_before` -> `end_published_date`
+  - with conversion from `MM/DD/YYYY` to ISO-8601 UTC timestamps.
+- Added optional dependency group: `pip install -e ".[exa]"`.
+- Added Exa config block under `search.exa` in default config.
+
 ## v0.1.5
 
 ### Major: Search stack upgrades (SDK + backend-aware schemas)

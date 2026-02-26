@@ -29,6 +29,9 @@ dev = [
 perplexity = [
     "perplexityai",
 ]
+exa = [
+    "exa-py",
+]
 
 [project.scripts]
 prophet = "miniprophet.run.app:app"

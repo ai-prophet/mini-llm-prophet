@@ -19,18 +19,26 @@ pip install -e ".[perplexity]"
 
 `perplexity` is the default search backend, so this is the recommended install.
 If you only use Brave search, `pip install -e .` is enough.
+If you want Exa search, use `pip install -e ".[exa]"`.
 
 ## Set API keys
 
 Use the built-in CLI to persist keys into prophet's global `.env` file:
 
 ```bash
-# direct set
+# Step 1: search API keys (one of the below is good)
 prophet set PERPLEXITY_API_KEY "your-perplexity-key"
 prophet set BRAVE_API_KEY "your-brave-key"
+prophet set EXA_API_KEY "your-exa-key"
+
+# Step 2: model API key (if you use OpenRouter, this works with any model)
 prophet set OPENROUTER_API_KEY "your-openrouter-key"
 
-# interactive editor
+# Or you go with LiteLLM (--model-class litellm), set model-specific API keys
+# For instance, if you want to use OpenAI models
+prophet set OPENAI_API_KEY "your-openai-key"
+
+# interactive editor can do the same!
 prophet set -i
 ```
 

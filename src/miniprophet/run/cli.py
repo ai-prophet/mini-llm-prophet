@@ -55,6 +55,9 @@ def main(
     model_class: str | None = typer.Option(
         None, "--model-class", help="Override model class (e.g. openrouter, litellm)."
     ),
+    search_class: str | None = typer.Option(
+        None, "--search-class", help="Override search class (e.g. perplexity, exa, brave)."
+    ),
 ) -> None:
     """Run the forecasting agent on a question with specified outcomes."""
     from miniprophet.agent.cli_agent import CliForecastAgent
@@ -112,6 +115,9 @@ def main(
             "model": {
                 "model_name": model_name or UNSET,
                 "model_class": model_class or UNSET,
+            },
+            "search": {
+                "search_class": search_class or UNSET,
             },
         }
     )

@@ -67,5 +67,12 @@ search:
     max_retries: 3
     max_extract_chars: 3000
 
+  exa:
+    content_mode: "text"  # text | highlights
+    text_max_characters: 3000
+    highlights_max_characters: 1200
+    search_type: "auto"
+    category: null
+
 batch:
   timeout: 180  # 3 minutes

@@ -69,8 +69,8 @@ def _render_source_board_panel(board) -> Panel:
             snippet_text += Text(f" ...{extra_chars} characters omitted", style="dim italic")
         snippet_text.no_wrap = False
 
-        note_text = Text(f"> {note[:400]}", style="italic")
-        extra_note_chars = len(note) - 400
+        note_text = Text(f"> {note[:500]}", style="italic")
+        extra_note_chars = len(note) - 500
         if extra_note_chars > 0:
             note_text += Text(f"\n...{extra_note_chars} characters omitted", style="dim italic")
 

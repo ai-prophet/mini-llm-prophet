@@ -29,13 +29,14 @@ class SearchTool(Protocol):
 _SEARCH_CLASS_MAPPING: dict[str, str] = {
     "brave": "miniprophet.search.brave.BraveSearchTool",
     "perplexity": "miniprophet.search.perplexity.PerplexitySearchTool",
+    "exa": "miniprophet.search.exa.ExaSearchTool",
 }
 
 
 def get_search_tool(search_cfg: dict) -> SearchTool:
     """Instantiate a search tool from a config dict.
 
-    The 'search_class' key selects the implementation (default: "brave").
+    The 'search_class' key selects the implementation (default: "perplexity").
     Remaining keys are forwarded as keyword arguments to the constructor.
     """
     search_cls = search_cfg.get("search_class", "perplexity")

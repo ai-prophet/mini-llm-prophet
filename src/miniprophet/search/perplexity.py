@@ -89,6 +89,7 @@ class PerplexitySearchTool:
         search_date_before = kwargs.pop("search_date_before", None)
         search_date_after = kwargs.pop("search_date_after", None)
         payload.update(kwargs)
+        # This would effectively override any "after date" set by the model itself
         if search_date_after:
             payload["search_after_date_filter"] = search_date_after
             payload["last_updated_after_filter"] = search_date_after
