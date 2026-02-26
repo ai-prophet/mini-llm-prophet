@@ -138,6 +138,7 @@ Notes:
 - value is in seconds
 - `0` disables timeout
 - applies per run (not whole batch)
+- timeout cancellation is cooperative at agent step boundaries; if a model/search request is already in flight, the run may stop right after that request returns
 
 ## Output layout
 

@@ -7,10 +7,16 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
+from typing import Any
 
 from miniprophet.agent.batch_agent import BatchForecastAgent, RateLimitCoordinator
-from miniprophet.exceptions import BatchRunTimeoutError, SearchAuthError, SearchRateLimitError
+from miniprophet.exceptions import (
+    BatchFatalError,
+    BatchRunTimeoutError,
+    SearchAuthError,
+    SearchRateLimitError,
+)
 from miniprophet.run.batch_progress import BatchProgressManager
 
 logger = logging.getLogger("miniprophet.batch")
@@ -111,6 +117,9 @@ class BatchRunState:
     summary_path: Path
     results: dict[str, RunResult]
     total_cost_ref: list[float]
+    fatal_lock: threading.Lock
+    fatal_event: threading.Event
+    fatal_error: str | None = None
 
 
 def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
@@ -202,6 +211,28 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "429" in exc_str or "rate limit" in exc_str
 
 
+def _is_auth_error(exc: Exception) -> bool:
+    """Check if an exception indicates auth/API credential failure."""
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+
+    if "auth" in name:
+        return True
+    if "permissiondenied" in name:
+        return True
+
+    auth_tokens = (
+        "authentication",
+        "unauthorized",
+        "permission denied",
+        "invalid api key",
+        "api key",
+        "http 401",
+        "status code 401",
+    )
+    return any(token in msg for token in auth_tokens)
+
+
 def _write_summary(args: BatchRunArgs, state: BatchRunState) -> None:
     summary = {
         "batch_config": {k: v for k, v in args.config.items() if k != "agent"},
@@ -211,6 +242,60 @@ def _write_summary(args: BatchRunArgs, state: BatchRunState) -> None:
     with state.summary_lock:
         state.summary_path.parent.mkdir(parents=True, exist_ok=True)
         state.summary_path.write_text(json.dumps(summary, indent=2))
+
+
+def _run_agent_with_timeout(
+    *,
+    agent: BatchForecastAgent,
+    timeout_seconds: float,
+    cancel_event: threading.Event,
+    run_id: str,
+    title: str,
+    outcomes: list[str],
+    ground_truth: dict[str, int] | None,
+    runtime_kwargs: dict[str, Any],
+) -> Any:
+    if timeout_seconds <= 0:
+        return agent.run(
+            title=title,
+            outcomes=outcomes,
+            ground_truth=ground_truth,
+            **runtime_kwargs,
+        )
+
+    done = threading.Event()
+    result_holder: list[Any] = []
+    error_holder: list[Exception] = []
+
+    def _target() -> None:
+        try:
+            result_holder.append(
+                agent.run(
+                    title=title,
+                    outcomes=outcomes,
+                    ground_truth=ground_truth,
+                    **runtime_kwargs,
+                )
+            )
+        except Exception as exc:
+            error_holder.append(exc)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=_target, name=f"batch-run-{run_id}", daemon=True)
+    thread.start()
+
+    if not done.wait(timeout=timeout_seconds):
+        cancel_event.set()
+        raise BatchRunTimeoutError(f"Batch run timed out after {timeout_seconds:.1f}s")
+
+    if error_holder:
+        raise error_holder[0]
+
+    if not result_holder:
+        raise RuntimeError(f"Run {run_id} finished without a result payload")
+
+    return result_holder[0]
 
 
 def process_problem(
@@ -234,6 +319,7 @@ def process_problem(
 
     agent = None
     timed_out = False
+    cancel_event = threading.Event()
     try:
         if args.max_cost > 0 and state.total_cost_ref[0] >= args.max_cost:
             result.status = "skipped_cost_limit"
@@ -269,6 +355,7 @@ def process_problem(
             run_id=run_id,
             coordinator=state.coordinator,
             progress_manager=state.progress,
+            cancel_event=cancel_event,
             **agent_cfg,
         )
 
@@ -277,35 +364,16 @@ def process_problem(
             "search_date_after": args.search_date_after,
         }
 
-        if args.timeout_seconds > 0:
-            import concurrent.futures
-
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(
-                agent.run,
-                title=problem.title,
-                outcomes=problem.outcomes,
-                ground_truth=problem.ground_truth,
-                **runtime_kwargs,
-            )
-            try:
-                forecast = future.result(timeout=args.timeout_seconds)
-            except concurrent.futures.TimeoutError as exc:
-                future.cancel()
-                # Best-effort release of the batch worker without waiting for this run.
-                executor.shutdown(wait=False, cancel_futures=True)
-                raise BatchRunTimeoutError(
-                    f"Batch run timed out after {args.timeout_seconds:.1f}s"
-                ) from exc
-            else:
-                executor.shutdown(wait=True)
-        else:
-            forecast = agent.run(
-                title=problem.title,
-                outcomes=problem.outcomes,
-                ground_truth=problem.ground_truth,
-                **runtime_kwargs,
-            )
+        forecast = _run_agent_with_timeout(
+            agent=agent,
+            timeout_seconds=args.timeout_seconds,
+            cancel_event=cancel_event,
+            run_id=run_id,
+            title=problem.title,
+            outcomes=problem.outcomes,
+            ground_truth=problem.ground_truth,
+            runtime_kwargs=runtime_kwargs,
+        )
 
         result.status = forecast.get("exit_status", "unknown")
         result.submission = forecast.get("submission") or None
@@ -326,7 +394,7 @@ def process_problem(
         result.status = "auth_error"
         result.error = str(exc)
         state.progress.on_run_end(run_id, result.status)
-        return True
+        raise BatchFatalError(f"Run {run_id} failed with auth error: {exc}") from exc
 
     except BatchRunTimeoutError as exc:
         timed_out = True
@@ -348,6 +416,12 @@ def process_problem(
                 )
                 state.progress.on_run_end(run_id, f"rate_limited (retry {problem.retries})")
                 return False
+
+        if _is_auth_error(exc):
+            result.status = "auth_error"
+            result.error = str(exc)
+            state.progress.on_run_end(run_id, result.status)
+            raise BatchFatalError(f"Run {run_id} failed with auth error: {exc}") from exc
 
         result.status = type(exc).__name__
         result.error = str(exc)
@@ -381,24 +455,64 @@ def run_batch(
         summary_path=args.output_dir / "summary.json",
         results=dict(args.initial_results or {}),
         total_cost_ref=[float(args.initial_total_cost)],
+        fatal_lock=threading.Lock(),
+        fatal_event=threading.Event(),
     )
 
     queue: Queue[ForecastProblem] = Queue()
     for p in problems:
         queue.put(p)
 
-    def worker_loop() -> None:
+    def _drain_pending_queue() -> int:
+        drained = 0
         while True:
             try:
+                queue.get_nowait()
+            except Empty:
+                break
+            else:
+                queue.task_done()
+                drained += 1
+        return drained
+
+    def worker_loop() -> None:
+        while True:
+            if state.fatal_event.is_set():
+                return
+
+            try:
                 problem = queue.get(timeout=0.5)
-            except Exception:
-                if queue.empty():
+            except Empty:
+                if queue.empty() or state.fatal_event.is_set():
                     return
                 continue
-            done = process_problem(problem, args, state)
-            if not done:
-                queue.put(problem)
-            queue.task_done()
+
+            try:
+                if state.fatal_event.is_set():
+                    return
+
+                done = process_problem(problem, args, state)
+                if not done and not state.fatal_event.is_set():
+                    queue.put(problem)
+            except BatchFatalError as exc:
+                with state.fatal_lock:
+                    if not state.fatal_event.is_set():
+                        state.fatal_error = str(exc)
+                        state.fatal_event.set()
+                _drain_pending_queue()
+                return
+            except Exception as exc:
+                result = state.results.setdefault(
+                    problem.run_id,
+                    RunResult(run_id=problem.run_id, title=problem.title),
+                )
+                result.status = type(exc).__name__
+                result.error = str(exc)
+                logger.error("Unhandled worker exception for %s", problem.run_id, exc_info=True)
+                state.progress.on_run_end(problem.run_id, result.status)
+                _write_summary(args, state)
+            finally:
+                queue.task_done()
 
     with Live(state.progress.render_group, refresh_per_second=4):
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as executor:
@@ -414,4 +528,8 @@ def run_batch(
                     pass
 
     _write_summary(args, state)
+
+    if state.fatal_event.is_set():
+        raise BatchFatalError(state.fatal_error or "Batch terminated due to a fatal error.")
+
     return state.results

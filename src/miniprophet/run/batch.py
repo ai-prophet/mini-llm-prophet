@@ -129,6 +129,7 @@ def main(
     ),
 ) -> None:
     """Run the forecasting agent on a batch of problems from a JSONL file."""
+    from miniprophet.exceptions import BatchFatalError
     from miniprophet.run.batch_runner import BatchRunArgs, load_problems, run_batch
 
     print_cli_banner(__version__, mode_label="batch mode")
@@ -179,7 +180,11 @@ def main(
         search_date_before=search_date_before,
         search_date_after=search_date_after,
     )
-    results = run_batch(problems, run_args)
+    try:
+        results = run_batch(problems, run_args)
+    except BatchFatalError as exc:
+        console.print(f"\n[bold red]Batch aborted:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
 
     n_submitted = sum(1 for r in results.values() if r.status == "submitted")
     n_failed = sum(1 for r in results.values() if r.status not in ("submitted", "pending"))

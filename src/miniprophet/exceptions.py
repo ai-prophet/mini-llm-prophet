@@ -51,3 +51,7 @@ Batch-processing related errors.
 
 class BatchRunTimeoutError(Exception):
     """Raised when a single batch run exceeds the configured timeout."""
+
+
+class BatchFatalError(Exception):
+    """Raised when batch execution must terminate immediately."""

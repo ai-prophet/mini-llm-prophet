@@ -11,6 +11,7 @@ import threading
 
 from miniprophet import ContextManager, Environment, Model
 from miniprophet.agent.default import AgentConfig, DefaultForecastAgent
+from miniprophet.exceptions import BatchRunTimeoutError
 from miniprophet.run.batch_progress import BatchProgressManager
 
 logger = logging.getLogger("miniprophet.agent.batch")
@@ -29,8 +30,11 @@ class RateLimitCoordinator:
         self._lock = threading.Lock()
         self._backoff = backoff_seconds
 
-    def wait_if_paused(self) -> None:
-        self._resume.wait()
+    def wait_if_paused(self, cancel_event: threading.Event | None = None) -> bool:
+        while not self._resume.wait(timeout=0.2):
+            if cancel_event is not None and cancel_event.is_set():
+                return False
+        return True
 
     def signal_rate_limit(self, backoff_seconds: float | None = None) -> None:
         secs = backoff_seconds if backoff_seconds is not None else self._backoff
@@ -38,7 +42,9 @@ class RateLimitCoordinator:
             if self._resume.is_set():
                 logger.warning("Rate limit detected -- pausing all workers for %.0fs", secs)
                 self._resume.clear()
-                threading.Timer(secs, self._resume.set).start()
+                timer = threading.Timer(secs, self._resume.set)
+                timer.daemon = True
+                timer.start()
 
 
 class BatchForecastAgent(DefaultForecastAgent):
@@ -54,6 +60,7 @@ class BatchForecastAgent(DefaultForecastAgent):
         run_id: str = "",
         coordinator: RateLimitCoordinator | None = None,
         progress_manager: BatchProgressManager | None = None,
+        cancel_event: threading.Event | None = None,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -66,14 +73,26 @@ class BatchForecastAgent(DefaultForecastAgent):
         self.run_id = run_id
         self._coordinator = coordinator
         self._progress = progress_manager
+        self._cancel_event = cancel_event
         # storing the previous cost
         self._prev_cost = 0.0
 
     def step(self) -> list[dict]:
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise BatchRunTimeoutError("Batch run timed out and was cancelled.")
+
         if self._coordinator is not None:
-            self._coordinator.wait_if_paused()
+            resumed = self._coordinator.wait_if_paused(cancel_event=self._cancel_event)
+            if not resumed:
+                raise BatchRunTimeoutError("Batch run timed out and was cancelled.")
+
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise BatchRunTimeoutError("Batch run timed out and was cancelled.")
 
         res = super().step()
+
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise BatchRunTimeoutError("Batch run timed out and was cancelled.")
 
         cost_delta = self.total_cost - self._prev_cost
         self._prev_cost = self.total_cost
