@@ -41,6 +41,7 @@ GLOBAL_MODEL_STATS = GlobalModelStats()
 _MODEL_CLASS_MAPPING: dict[str, str] = {
     "openrouter": "miniprophet.models.openrouter.OpenRouterModel",
     "litellm": "miniprophet.models.litellm.LitellmModel",
+    "litellm_response": "miniprophet.models.litellm_response.LitellmResponseModel",
 }
 
 
@@ -48,7 +49,7 @@ def get_model(config: dict | None = None) -> Model:
     """Instantiate a model from a config dict.
 
     Resolves model_name from config or MINIPROPHET_MODEL_NAME env var.
-    Selects model class via 'model_class' key or defaults to OpenRouterModel.
+    Selects model class via 'model_class' key or defaults to LiteLLMModel.
     """
     if config is None:
         config = {}
@@ -57,9 +58,11 @@ def get_model(config: dict | None = None) -> Model:
     if not config.get("model_name"):
         config["model_name"] = os.getenv("MINIPROPHET_MODEL_NAME", "")
     if not config["model_name"]:
-        raise ValueError("No model name set. Pass --model or set MINIPROPHET_MODEL_NAME.")
+        raise ValueError(
+            "No model name set. Pass --model or set MINIPROPHET_MODEL_NAME via `prophet set`."
+        )
 
-    model_class_key = config.pop("model_class", "openrouter")
+    model_class_key = config.pop("model_class", "litellm")
     full_path = _MODEL_CLASS_MAPPING.get(model_class_key, model_class_key)
     try:
         module_name, class_name = full_path.rsplit(".", 1)

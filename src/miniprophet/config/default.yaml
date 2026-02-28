@@ -44,7 +44,7 @@ model:
   model_class: "litellm"
   model_name: "gemini/gemini-3-flash-preview"
   model_kwargs:
-    temperature: 0.9
+    drop_params: true
   format_error_template: "Error: {error}. Please make a valid tool call."
   observation_template: "{output}"
 

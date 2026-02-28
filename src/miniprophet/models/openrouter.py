@@ -11,9 +11,12 @@ from typing import Any, Literal
 import requests
 from pydantic import BaseModel
 
-from miniprophet.exceptions import FormatError
 from miniprophet.models import GLOBAL_MODEL_STATS
 from miniprophet.models.retry import retry
+from miniprophet.models.utils import (
+    format_observation_messages,
+    parse_single_action,
+)
 
 logger = logging.getLogger("miniprophet.models.openrouter")
 
@@ -53,9 +56,10 @@ class OpenRouterModel:
     # ------------------------------------------------------------------
 
     def query(self, messages: list[dict], tools: list[dict]) -> dict:
+        prepared = [{k: v for k, v in msg.items() if k != "extra"} for msg in messages]
         for attempt in retry(logger=logger, abort_exceptions=self.abort_exceptions):
             with attempt:
-                response = self._query(self._prepare_messages(messages), tools)
+                response = self._query(prepared, tools)
 
         cost_info = self._calculate_cost(response)
         GLOBAL_MODEL_STATS.add(cost_info["cost"])
@@ -129,36 +133,15 @@ class OpenRouterModel:
     def _parse_actions(self, response: dict) -> list[dict]:
         """Parse tool calls from the API response. Raises FormatError on problems."""
         tool_calls = response["choices"][0]["message"].get("tool_calls") or []
-        if not tool_calls:
-            raise FormatError(
-                {
-                    "role": "user",
-                    "content": self.config.format_error_template.format(
-                        error="No tool call found in the response. You MUST make exactly one tool call per step."
-                    ),
-                    "extra": {"interrupt_type": "FormatError"},
-                }
-            )
-        if len(tool_calls) > 1:
-            raise FormatError(
-                {
-                    "role": "user",
-                    "content": self.config.format_error_template.format(
-                        error="Multiple tool calls found. You MUST make exactly ONE tool call per step."
-                    ),
-                    "extra": {"interrupt_type": "FormatError"},
-                }
-            )
-
-        tc = tool_calls[0]
-        fn = tc.get("function", {})
-        return [
-            {
-                "name": fn.get("name", ""),
-                "arguments": fn.get("arguments", "{}"),
+        return parse_single_action(
+            tool_calls,
+            self.config.format_error_template,
+            lambda tc: {
+                "name": tc.get("function", {}).get("name", ""),
+                "arguments": tc.get("function", {}).get("arguments", "{}"),
                 "tool_call_id": tc.get("id"),
-            }
-        ]
+            },
+        )
 
     # ------------------------------------------------------------------
     # Message formatting
@@ -168,33 +151,7 @@ class OpenRouterModel:
         return dict(kwargs)
 
     def format_observation_messages(self, message: dict, outputs: list[dict]) -> list[dict]:
-        """Format environment outputs into tool-role messages for the API."""
-        actions = message.get("extra", {}).get("actions", [])
-        not_executed = {"output": "Action was not executed.", "error": True}
-        padded = outputs + [not_executed] * (len(actions) - len(outputs))
-
-        results: list[dict] = []
-        for action, output in zip(actions, padded):
-            raw = output.get("output", "")
-            if output.get("error"):
-                content = f"<error>\n{raw}\n</error>"
-            else:
-                content = f"<output>\n{raw}\n</output>"
-            msg: dict[str, Any] = {
-                "content": content,
-                "extra": {
-                    "error": output.get("error", False),
-                    "search_cost": output.get("search_cost", 0.0),
-                    "timestamp": time.time(),
-                },
-            }
-            if "tool_call_id" in action and action["tool_call_id"]:
-                msg["role"] = "tool"
-                msg["tool_call_id"] = action["tool_call_id"]
-            else:
-                msg["role"] = "user"
-            results.append(msg)
-        return results
+        return format_observation_messages(message, outputs)
 
     def serialize(self) -> dict:
         return {
