@@ -14,8 +14,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from miniprophet.environment.source_board import Source
-from miniprophet.search import SearchResult
+from miniprophet.environment.source_board import Source  # noqa: E402
+from miniprophet.search import SearchResult  # noqa: E402
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
