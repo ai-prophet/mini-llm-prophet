@@ -12,6 +12,7 @@ jobs:
        startsWith(github.event.comment.body, '/test-live-off'))
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       issues: write
       pull-requests: write
@@ -69,10 +70,21 @@ jobs:
                 labels: [label],
               });
 
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'live-api-gate.yml',
+                ref: context.payload.repository.default_branch,
+                inputs: {
+                  pr_number: String(prNumber),
+                  force_run: 'true',
+                },
+              });
+
               await github.rest.issues.createComment({
                 owner,
                 repo,
                 issue_number: prNumber,
-                body: `Live API gate enabled by @${context.payload.comment.user.login}. Running live_api tests.`
+                body: `Live API gate enabled by @${context.payload.comment.user.login}. Dispatched live-api-gate run.`
               });
             }

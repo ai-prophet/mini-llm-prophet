@@ -3,6 +3,17 @@ name: Live API Gate
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to test
+        required: true
+        type: string
+      force_run:
+        description: Force live API test run even without label
+        required: false
+        default: "false"
+        type: string
 
 jobs:
   live-api-gate:
@@ -12,16 +23,37 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - name: Determine gate mode
+      - name: Resolve PR context and gate mode
         id: mode
-        env:
-          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
-        run: |
-          if echo "$LABELS_JSON" | grep -q '"live-api-required"'; then
-            echo "run_live=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run_live=false" >> "$GITHUB_OUTPUT"
-          fi
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const forceRun = (context.payload.inputs?.force_run || "false") === "true";
+            let pr;
+            if (context.eventName === "workflow_dispatch") {
+              const prNumber = Number(context.payload.inputs?.pr_number || 0);
+              if (!prNumber) {
+                core.setFailed("workflow_dispatch requires a valid pr_number input");
+                return;
+              }
+              const { data } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              pr = data;
+            } else {
+              pr = context.payload.pull_request;
+            }
+
+            const labels = (pr.labels || []).map((l) => l.name);
+            const hasLabel = labels.includes("live-api-required");
+            const runLive = forceRun || hasLabel;
+
+            core.setOutput("run_live", runLive ? "true" : "false");
+            core.setOutput("head_repo", pr.head.repo.full_name);
+            core.setOutput("head_sha", pr.head.sha);
+            core.setOutput("pr_number", String(pr.number));
 
       - name: Gate is inactive
         if: steps.mode.outputs.run_live != 'true'
@@ -31,8 +63,8 @@ jobs:
         if: steps.mode.outputs.run_live == 'true'
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.sha }}
+          repository: ${{ steps.mode.outputs.head_repo }}
+          ref: ${{ steps.mode.outputs.head_sha }}
 
       - name: Setup Python
         if: steps.mode.outputs.run_live == 'true'
