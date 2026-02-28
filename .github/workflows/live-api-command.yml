@@ -1,0 +1,78 @@
+name: Live API Command
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  handle-command:
+    if: >-
+      github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, '/test-live') ||
+       startsWith(github.event.comment.body, '/test-live-off'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Apply /test-live command
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = (context.payload.comment.body || '').trim();
+            const assoc = context.payload.comment.author_association;
+            const allowed = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+            const prNumber = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const label = 'live-api-required';
+
+            if (!allowed.has(assoc)) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `@${context.payload.comment.user.login} You are not authorized to run live API tests.`
+              });
+              return;
+            }
+
+            if (body.startsWith('/test-live-off')) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  name: label,
+                });
+              } catch (error) {
+                if (error.status !== 404) {
+                  throw error;
+                }
+              }
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `Live API gate disabled by @${context.payload.comment.user.login}.`
+              });
+              return;
+            }
+
+            if (body.startsWith('/test-live')) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: [label],
+              });
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `Live API gate enabled by @${context.payload.comment.user.login}. Running live_api tests.`
+              });
+            }

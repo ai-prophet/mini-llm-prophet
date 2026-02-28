@@ -25,6 +25,9 @@ dependencies = [
 dev = [
     "ruff",
     "pre-commit",
+    "pytest",
+    "perplexityai",
+    "exa-py",
 ]
 perplexity = [
     "perplexityai",
@@ -49,3 +52,9 @@ ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live_api: tests that perform real external API calls (disabled unless explicitly selected).",
+]

@@ -91,6 +91,10 @@ prophet batch -f examples/example_batch_job.jsonl -o outputs/batch-demo --resume
 
 Run artifacts now include `sources.json` in addition to `info.json` and `trajectory.json`.
 
+## Contributing
+
+Contributor-facing testing and CI notes live in [CONTRIBUTOR.md](CONTRIBUTOR.md).
+
 ## Docs
 
 Detailed docs are split by topic:

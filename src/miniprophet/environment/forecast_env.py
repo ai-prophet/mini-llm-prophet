@@ -63,7 +63,9 @@ class ForecastEnvironment:
         board: SourceBoard | None = None,
         **kwargs: Any,
     ) -> None:
-        self.board = board or SourceBoard()
+        if board is None:
+            board = SourceBoard()
+        self.board = board
         self._tools: dict[str, Tool] = {t.name: t for t in tools}
 
     def execute(self, action: dict, **kwargs) -> dict:
