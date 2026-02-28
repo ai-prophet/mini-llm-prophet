@@ -102,7 +102,9 @@ def test_default_agent_run_submitted_and_evaluated(
 ) -> None:
     model = DummyModel(
         scripted_messages=[
-            assistant_action_message(name="submit", arguments='{"probabilities": {"Yes": 0.7, "No": 0.3}}')
+            assistant_action_message(
+                name="submit", arguments='{"probabilities": {"Yes": 0.7, "No": 0.3}}'
+            )
         ]
     )
     env = _SubmitEnv()

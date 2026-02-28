@@ -115,7 +115,11 @@ class OpenRouterModel:
         cost = usage.get("cost", 0.0)
         if cost is None:
             cost = 0.0
-        if cost <= 0.0 and "free" not in self.config.model_name and self.config.cost_tracking != "ignore_errors":
+        if (
+            cost <= 0.0
+            and "free" not in self.config.model_name
+            and self.config.cost_tracking != "ignore_errors"
+        ):
             raise RuntimeError(
                 f"No valid cost info from OpenRouter for {self.config.model_name}. "
                 f"Usage: {usage}. Set cost_tracking='ignore_errors' to suppress."

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import pytest
+from conftest import DummyEnvironment, DummyModel
 
 from miniprophet.agent.batch_agent import BatchForecastAgent, RateLimitCoordinator
 from miniprophet.exceptions import BatchRunTimeoutError, SearchRateLimitError
@@ -18,8 +19,6 @@ from miniprophet.run.batch_runner import (
     load_problems,
     to_mm_dd_yyyy,
 )
-
-from conftest import DummyEnvironment, DummyModel
 
 
 def test_to_mm_dd_yyyy_applies_offset() -> None:

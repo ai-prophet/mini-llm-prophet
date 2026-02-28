@@ -35,9 +35,7 @@ def main(
     """Save key/value pairs into the global config .env file."""
     if interactive:
         if key is not None or value is not None:
-            console.print(
-                "[bold red]Error:[/bold red] Do not pass KEY/VALUE with --interactive."
-            )
+            console.print("[bold red]Error:[/bold red] Do not pass KEY/VALUE with --interactive.")
             raise typer.Exit(1)
 
         updates = prompt_and_save_env_vars(global_config_file)
@@ -50,9 +48,7 @@ def main(
         return
 
     if key is None or value is None:
-        console.print(
-            "[bold red]Error:[/bold red] Expected KEY VALUE or use --interactive / -i."
-        )
+        console.print("[bold red]Error:[/bold red] Expected KEY VALUE or use --interactive / -i.")
         raise typer.Exit(1)
 
     if not is_valid_env_key(key):

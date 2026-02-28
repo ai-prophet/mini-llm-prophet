@@ -122,16 +122,18 @@ def test_openrouter_format_observation_messages_tool_and_user_roles() -> None:
 
 def _litellm_response(tool_calls):
     msg = types.SimpleNamespace(tool_calls=tool_calls)
-    msg.model_dump = lambda: {"tool_calls": [
-        {
-            "id": getattr(tc, "id", None),
-            "function": {
-                "name": getattr(getattr(tc, "function", None), "name", ""),
-                "arguments": getattr(getattr(tc, "function", None), "arguments", "{}"),
-            },
-        }
-        for tc in (tool_calls or [])
-    ]}
+    msg.model_dump = lambda: {
+        "tool_calls": [
+            {
+                "id": getattr(tc, "id", None),
+                "function": {
+                    "name": getattr(getattr(tc, "function", None), "name", ""),
+                    "arguments": getattr(getattr(tc, "function", None), "arguments", "{}"),
+                },
+            }
+            for tc in (tool_calls or [])
+        ]
+    }
     choice = types.SimpleNamespace(message=msg)
     resp = types.SimpleNamespace(choices=[choice])
     resp.model_dump = lambda: {"choices": [{"message": msg.model_dump()}]}

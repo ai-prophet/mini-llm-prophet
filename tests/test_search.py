@@ -73,8 +73,13 @@ def test_get_search_tool_raises_on_unknown_class() -> None:
 
 
 def test_exa_date_mmddyyyy_to_iso_start_and_end() -> None:
-    assert ExaSearchTool._date_mmddyyyy_to_iso("01/02/2026", end_of_day=False) == "2026-01-02T00:00:00Z"
-    assert ExaSearchTool._date_mmddyyyy_to_iso("01/02/2026", end_of_day=True) == "2026-01-02T23:59:59Z"
+    assert (
+        ExaSearchTool._date_mmddyyyy_to_iso("01/02/2026", end_of_day=False)
+        == "2026-01-02T00:00:00Z"
+    )
+    assert (
+        ExaSearchTool._date_mmddyyyy_to_iso("01/02/2026", end_of_day=True) == "2026-01-02T23:59:59Z"
+    )
 
 
 def test_exa_date_mmddyyyy_to_iso_rejects_invalid_date() -> None:

@@ -63,9 +63,7 @@ def prompt_and_save_env_vars(env_file: Path) -> dict[str, str]:
 
     console.rule("[bold cyan]Global Env Config[/bold cyan]", style="cyan")
     console.print(f"[bold]Config file:[/bold] [cyan]{env_file}[/cyan]")
-    console.print(
-        "[dim]Press Enter on the key prompt when you are done editing.[/dim]"
-    )
+    console.print("[dim]Press Enter on the key prompt when you are done editing.[/dim]")
 
     while True:
         _print_env_table(env_file)

@@ -12,7 +12,9 @@ def test_get_config_from_spec_parses_key_value_json() -> None:
     assert cfg == {"model": {"model_kwargs": {"temperature": 0.2}}}
 
 
-def test_get_config_path_uses_env_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_get_config_path_uses_env_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
     cfg = cfg_dir / "custom.yaml"

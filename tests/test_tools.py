@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from conftest import DummySearchTool
 
 from miniprophet.environment.source_board import Source, SourceBoard
 from miniprophet.exceptions import SearchAuthError, SearchNetworkError, Submitted
 from miniprophet.tools.search_tool import SearchForecastTool
 from miniprophet.tools.source_board_tools import AddSourceTool, EditNoteTool
 from miniprophet.tools.submit import SubmitTool
-
-from conftest import DummySearchTool
 
 
 def test_search_tool_execute_success_assigns_ids(two_sources: list[Source]) -> None:
@@ -20,7 +19,7 @@ def test_search_tool_execute_success_assigns_ids(two_sources: list[Source]) -> N
 
     assert output["search_cost"] == pytest.approx(0.015)
     assert [sid for sid, _ in output["search_results"]] == ["S1", "S2"]
-    assert "<search_results count=\"2\">" in output["output"]
+    assert '<search_results count="2">' in output["output"]
     assert registry["S1"].title == "A"
 
 

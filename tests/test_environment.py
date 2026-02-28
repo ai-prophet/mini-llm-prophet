@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import json
 
-import pytest
+from conftest import DummySearchTool
 
 from miniprophet.environment.forecast_env import ForecastEnvironment, create_default_tools
 from miniprophet.environment.source_board import Source, SourceBoard
 from miniprophet.tools.search_tool import SearchForecastTool
-
-from conftest import DummySearchTool
 
 
 class _EchoTool:
@@ -32,7 +30,9 @@ class _EchoTool:
 def test_forecast_environment_execute_passes_runtime_kwargs() -> None:
     env = ForecastEnvironment([_EchoTool("echo")])
 
-    output = env.execute({"name": "echo", "arguments": '{"query": "x"}'}, search_date_before="01/02/2026")
+    output = env.execute(
+        {"name": "echo", "arguments": '{"query": "x"}'}, search_date_before="01/02/2026"
+    )
 
     payload = json.loads(output["output"])
     assert payload["query"] == "x"

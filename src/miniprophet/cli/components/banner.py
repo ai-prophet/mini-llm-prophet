@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from miniprophet.cli.utils import get_console
 from miniprophet import global_config_file
+from miniprophet.cli.utils import get_console
 
 console = get_console()
 
@@ -27,4 +27,6 @@ def print_cli_banner(version: str, *, mode_label: str | None = None) -> None:
         subtitle = f"{subtitle} | {mode_label}"
     console.print(f"[dim]{subtitle} | minimal LLM forecasting agent[/dim]\n")
     console.print(f"Loading global config from: [bold green]{global_config_file}[/bold green]")
-    console.print(f"[dim]To change the global config, set the [bold yellow]`MINIPROPHET_GLOBAL_CONFIG_DIR`[/bold yellow] env variable.[/dim]\n")
+    console.print(
+        "[dim]To change the global config, set the [bold yellow]`MINIPROPHET_GLOBAL_CONFIG_DIR`[/bold yellow] env variable.[/dim]\n"
+    )

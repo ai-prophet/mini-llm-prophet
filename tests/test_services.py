@@ -44,7 +44,9 @@ def test_kalshi_fetch_parses_outcomes_and_unresolved_ground_truth(
             },
         ],
     }
-    monkeypatch.setattr("miniprophet.run.services.kalshi.requests.get", lambda *a, **k: _Resp(payload))
+    monkeypatch.setattr(
+        "miniprophet.run.services.kalshi.requests.get", lambda *a, **k: _Resp(payload)
+    )
 
     result = KalshiService().fetch("evt")
 

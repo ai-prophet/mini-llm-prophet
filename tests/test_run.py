@@ -35,7 +35,9 @@ def test_build_batch_config_applies_overrides() -> None:
 
 def test_resolve_resume_state_disabled_returns_inputs(tmp_path: Path) -> None:
     problems = [ForecastProblem(run_id="r1", title="T", outcomes=["A", "B"])]
-    filtered, results, total = _resolve_resume_state(enabled=False, output=tmp_path, problems=problems)
+    filtered, results, total = _resolve_resume_state(
+        enabled=False, output=tmp_path, problems=problems
+    )
     assert filtered == problems
     assert results == {}
     assert total == 0.0
@@ -58,7 +60,9 @@ def test_resolve_resume_state_filters_completed_runs(tmp_path: Path) -> None:
         ForecastProblem(run_id="r2", title="T2", outcomes=["A", "B"]),
     ]
 
-    filtered, results, total = _resolve_resume_state(enabled=True, output=tmp_path, problems=problems)
+    filtered, results, total = _resolve_resume_state(
+        enabled=True, output=tmp_path, problems=problems
+    )
 
     assert [p.run_id for p in filtered] == ["r2"]
     assert "r1" in results
