@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mini-llm-prophet"
+name = "mini-prophet"
 version = "0.1.5"
 description = "A minimal LLM forecasting agent scaffolding"
 readme = "README.md"

@@ -1,4 +1,4 @@
-"""Batch CLI entry point for mini-llm-prophet."""
+"""Batch CLI entry point for mini-prophet."""
 
 from __future__ import annotations
 

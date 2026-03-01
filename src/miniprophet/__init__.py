@@ -1,5 +1,5 @@
 """
-mini-llm-prophet: A minimal LLM forecasting agent scaffolding.
+mini-prophet: A minimal LLM forecasting agent scaffolding.
 
 Provides:
 - Version numbering
@@ -19,7 +19,7 @@ package_dir = Path(__file__).resolve().parent
 global_dir = package_dir.parent.parent
 
 global_config_dir = (
-    Path(os.getenv("MINIPROPHET_GLOBAL_CONFIG_DIR") or user_config_dir("mini-llm-prophet"))
+    Path(os.getenv("MINIPROPHET_GLOBAL_CONFIG_DIR") or user_config_dir("mini-prophet"))
     or global_dir
 )
 global_config_dir.mkdir(parents=True, exist_ok=True)

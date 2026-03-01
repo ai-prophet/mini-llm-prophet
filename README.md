@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="./assets/icon.svg" alt="mini-llm-prophet icon" style="height:10em"/>
+  <img src="./assets/icon.svg" alt="mini-prophet icon" style="height:10em"/>
 </p>
 
-# mini-llm-prophet
+# mini-prophet
 
 A minimal LLM forecasting agent scaffolding. Inspired by [mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent).
 
 <p align="left">
-  <img src="./assets/mini-llm-prophet-loop.svg" alt="mini-llm-prophet loop" style="height:100%"/>
+  <img src="./assets/mini-prophet-loop.svg" alt="mini-prophet loop" style="height:100%"/>
 </p>
 
 ## Install
 
 ```bash
-cd mini-llm-prophet
+cd mini-prophet
 pip install -e ".[perplexity]"
 ```
 
@@ -44,7 +44,7 @@ prophet set -i
 
 By default, prophet stores and loads values from:
 
-- `~/.config/mini-llm-prophet/.env` (in linux; or your platform's equivalent config directory)
+- `~/.config/mini-prophet/.env` (in linux; or your platform's equivalent config directory)
 
 To use a different global config directory, set:
 

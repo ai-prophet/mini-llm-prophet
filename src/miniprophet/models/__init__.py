@@ -1,4 +1,4 @@
-"""Model factory and global cost tracking for mini-llm-prophet."""
+"""Model factory and global cost tracking for mini-prophet."""
 
 from __future__ import annotations
 

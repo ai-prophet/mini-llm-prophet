@@ -1,1 +1,1 @@
-"""CLI display layer for mini-llm-prophet."""
+"""CLI display layer for mini-prophet."""

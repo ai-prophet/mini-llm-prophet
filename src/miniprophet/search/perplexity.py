@@ -1,4 +1,4 @@
-"""Perplexity Search API integration for mini-llm-prophet.
+"""Perplexity Search API integration for mini-prophet.
 
 Uses the Perplexity Search API (https://docs.perplexity.ai/docs/search/quickstart)
 which returns structured web results with pre-extracted content in the snippet field.

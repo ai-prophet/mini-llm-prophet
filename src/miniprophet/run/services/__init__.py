@@ -1,4 +1,4 @@
-"""Prediction market service layer for mini-llm-prophet."""
+"""Prediction market service layer for mini-prophet."""
 
 from __future__ import annotations
 

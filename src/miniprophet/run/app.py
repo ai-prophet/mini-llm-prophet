@@ -1,4 +1,4 @@
-"""Root CLI application for mini-llm-prophet.
+"""Root CLI application for mini-prophet.
 
 Combines the single-run CLI (``prophet run``) and batch CLI
 (``prophet batch``) under a single entry point.
@@ -12,7 +12,7 @@ from miniprophet import __version__
 
 app = typer.Typer(
     name="prophet",
-    help=f"mini-llm-prophet (v{__version__}): a minimal LLM forecasting agent.",
+    help=f"mini-prophet (v{__version__}): a minimal LLM forecasting agent.",
     add_completion=False,
     invoke_without_command=True,
     no_args_is_help=True,

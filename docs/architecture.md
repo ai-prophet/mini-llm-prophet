@@ -4,7 +4,7 @@ This page explains the core agent loop and how state flows through the system.
 
 ## Core idea
 
-`mini-llm-prophet` runs a one-action-per-step tool loop:
+`mini-prophet` runs a one-action-per-step tool loop:
 
 1. Build the current message context.
 2. Ask the model for exactly one tool call.
