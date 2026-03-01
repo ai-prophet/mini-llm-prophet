@@ -92,19 +92,19 @@ def _resolve_resume_state(
         console.print(f"[bold red]Error:[/bold red] {exc}")
         raise typer.Exit(1) from exc
 
-    input_run_ids = {p.run_id for p in problems}
-    unexpected = sorted(set(resume_results) - input_run_ids)
+    input_task_ids = {p.task_id for p in problems}
+    unexpected = sorted(set(resume_results) - input_task_ids)
     if unexpected:
         preview = ", ".join(unexpected[:10])
         suffix = " ..." if len(unexpected) > 10 else ""
         console.print(
-            "[bold red]Error:[/bold red] Resume summary contains run_ids not present "
+            "[bold red]Error:[/bold red] Resume summary contains task_ids not present "
             f"in the input file: {preview}{suffix}"
         )
         raise typer.Exit(1)
 
     original_count = len(problems)
-    filtered_problems = [p for p in problems if p.run_id not in resume_results]
+    filtered_problems = [p for p in problems if p.task_id not in resume_results]
     skipped = original_count - len(filtered_problems)
     console.print(
         f"  Resume mode: skipping [cyan]{skipped}[/cyan] existing run(s), "
@@ -157,7 +157,7 @@ def main(
     resume: bool = typer.Option(
         False,
         "--resume",
-        help="Resume from existing output summary: skip already-seen run_ids.",
+        help="Resume from existing output summary: skip already-seen task_ids.",
     ),
     search_date_before: str | None = typer.Option(
         None, "--search-date-before", help="Search date before (MM/DD/YYYY) for search upper bound."

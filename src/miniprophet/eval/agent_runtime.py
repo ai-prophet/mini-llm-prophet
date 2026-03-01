@@ -50,7 +50,7 @@ class BatchForecastAgent(DefaultForecastAgent):
         *,
         context_manager: ContextManager | None = None,
         config_class: type = AgentConfig,
-        run_id: str = "",
+        task_id: str = "",
         coordinator: RateLimitCoordinator | None = None,
         progress_manager: EvalProgressManager | None = None,
         cancel_event: threading.Event | None = None,
@@ -63,7 +63,7 @@ class BatchForecastAgent(DefaultForecastAgent):
             config_class=config_class,
             **kwargs,
         )
-        self.run_id = run_id
+        self.task_id = task_id
         self._coordinator = coordinator
         self._progress = progress_manager
         self._cancel_event = cancel_event
@@ -91,7 +91,7 @@ class BatchForecastAgent(DefaultForecastAgent):
 
         if self._progress is not None:
             self._progress.update_run_status(
-                self.run_id,
+                self.task_id,
                 f"Step {self.n_calls + 1} (${self.total_cost:.2f}/{self.config.cost_limit:.2f})",
                 cost_delta=cost_delta,
             )
@@ -105,13 +105,13 @@ class EvalBatchAgentWrapper:
         self,
         *,
         agent: Any,
-        run_id: str,
+        task_id: str,
         coordinator: RateLimitCoordinator | None,
         progress_manager: EvalProgressManager | None,
         cancel_event: threading.Event | None,
     ) -> None:
         self._agent = agent
-        self.run_id = run_id
+        self.task_id = task_id
         self._coordinator = coordinator
         self._progress = progress_manager
         self._cancel_event = cancel_event
@@ -158,7 +158,7 @@ class EvalBatchAgentWrapper:
                 self._prev_cost = self.total_cost
                 step_idx = int(getattr(self._agent, "n_calls", 0) or 0) + 1
                 self._progress.update_run_status(
-                    self.run_id,
+                    self.task_id,
                     f"Step {step_idx} (${self.total_cost:.2f})",
                     cost_delta=cost_delta,
                 )

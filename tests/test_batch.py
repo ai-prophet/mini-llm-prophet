@@ -26,29 +26,29 @@ def test_to_mm_dd_yyyy_applies_offset() -> None:
 
 
 def test_forecast_problem_invalid_end_time_becomes_none() -> None:
-    p = ForecastProblem(run_id="r1", title="t", outcomes=["a", "b"], predict_by="not-a-date")
+    p = ForecastProblem(task_id="r1", title="t", outcomes=["a", "b"], predict_by="not-a-date")
     assert p.predict_by is None
 
 
-def test_load_problems_assigns_auto_run_ids(tmp_path: Path) -> None:
+def test_load_problems_assigns_auto_task_ids(tmp_path: Path) -> None:
     path = tmp_path / "problems.jsonl"
     path.write_text(
         '{"title": "Q1", "outcomes": ["A", "B"]}\n'
-        '{"title": "Q2", "outcomes": ["C", "D"], "run_id": "custom"}\n'
+        '{"title": "Q2", "outcomes": ["C", "D"], "task_id": "custom"}\n'
     )
 
     probs = load_problems(path)
-    assert [p.run_id for p in probs] == ["run_0", "custom"]
+    assert [p.task_id for p in probs] == ["task_0", "custom"]
 
 
 def test_load_problems_rejects_duplicate_run_ids(tmp_path: Path) -> None:
     path = tmp_path / "problems.jsonl"
     path.write_text(
-        '{"title": "Q1", "outcomes": ["A", "B"], "run_id": "x"}\n'
-        '{"title": "Q2", "outcomes": ["C", "D"], "run_id": "x"}\n'
+        '{"title": "Q1", "outcomes": ["A", "B"], "task_id": "x"}\n'
+        '{"title": "Q2", "outcomes": ["C", "D"], "task_id": "x"}\n'
     )
 
-    with pytest.raises(ValueError, match="duplicate run_id"):
+    with pytest.raises(ValueError, match="duplicate task_id"):
         load_problems(path)
 
 
@@ -60,7 +60,7 @@ def test_load_existing_summary_reads_results_and_total_cost(tmp_path: Path) -> N
                 "total_cost": 1.2,
                 "runs": [
                     {
-                        "run_id": "r1",
+                        "task_id": "r1",
                         "title": "t",
                         "status": "submitted",
                         "cost": {"model": 0.2, "search": 0.3, "total": 0.5},
@@ -121,7 +121,7 @@ def test_run_agent_with_timeout_success() -> None:
         agent=_SleepAgent(),
         timeout_seconds=0.2,
         cancel_event=threading.Event(),
-        run_id="r1",
+        task_id="r1",
         title="T",
         outcomes=["A", "B"],
         ground_truth=None,
@@ -137,7 +137,7 @@ def test_run_agent_with_timeout_sets_cancel_event_on_timeout() -> None:
             agent=_SleepAgent(sleep_s=0.1),
             timeout_seconds=0.01,
             cancel_event=cancel,
-            run_id="r1",
+            task_id="r1",
             title="T",
             outcomes=["A", "B"],
             ground_truth=None,
@@ -150,8 +150,8 @@ class _Progress:
     def __init__(self) -> None:
         self.calls: list[tuple[str, str, float]] = []
 
-    def update_run_status(self, run_id: str, message: str, cost_delta: float = 0.0) -> None:
-        self.calls.append((run_id, message, cost_delta))
+    def update_run_status(self, task_id: str, message: str, cost_delta: float = 0.0) -> None:
+        self.calls.append((task_id, message, cost_delta))
 
 
 def test_batch_forecast_agent_step_updates_progress(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -167,7 +167,7 @@ def test_batch_forecast_agent_step_updates_progress(monkeypatch: pytest.MonkeyPa
     agent = BatchForecastAgent(
         model=DummyModel(),
         env=DummyEnvironment(),
-        run_id="run-x",
+        task_id="run-x",
         progress_manager=progress,
         system_template="sys",
         instance_template="inst",

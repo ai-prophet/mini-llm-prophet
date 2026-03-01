@@ -20,7 +20,7 @@ def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
 class ForecastProblem:
     """A single standardized forecast-eval problem."""
 
-    run_id: str
+    task_id: str
     title: str
     outcomes: list[str]
     ground_truth: dict[str, int] | None = None

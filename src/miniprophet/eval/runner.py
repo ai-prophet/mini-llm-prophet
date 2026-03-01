@@ -33,7 +33,7 @@ RETRYABLE_EXCEPTIONS = (SearchRateLimitError,)
 class RunResult:
     """Result summary for one eval run."""
 
-    run_id: str
+    task_id: str
     title: str
     status: str = "pending"
     cost: dict[str, float] = field(
@@ -48,7 +48,7 @@ class RunResult:
     def from_dict(cls, payload: dict) -> RunResult:
         cost = payload.get("cost", {}) if isinstance(payload.get("cost", {}), dict) else {}
         return cls(
-            run_id=str(payload.get("run_id", "")),
+            task_id=str(payload.get("task_id", "")),
             title=str(payload.get("title", "")),
             status=str(payload.get("status", "pending")),
             cost={
@@ -64,7 +64,7 @@ class RunResult:
 
     def to_dict(self) -> dict:
         return {
-            "run_id": self.run_id,
+            "task_id": self.task_id,
             "title": self.title,
             "status": self.status,
             "cost": self.cost,
@@ -128,8 +128,8 @@ def load_existing_summary(path: Path) -> tuple[dict[str, RunResult], float]:
         if not isinstance(item, dict):
             continue
         run = RunResult.from_dict(item)
-        if run.run_id:
-            results[run.run_id] = run
+        if run.task_id:
+            results[run.task_id] = run
 
     total_cost = float(data.get("total_cost", 0.0) or 0.0)
     return results, total_cost
@@ -184,7 +184,7 @@ def _run_agent_with_timeout(
     agent: Any,
     timeout_seconds: float,
     cancel_event: threading.Event,
-    run_id: str,
+    task_id: str,
     title: str,
     outcomes: list[str],
     ground_truth: dict[str, int] | None,
@@ -217,7 +217,7 @@ def _run_agent_with_timeout(
         finally:
             done.set()
 
-    thread = threading.Thread(target=_target, name=f"eval-run-{run_id}", daemon=True)
+    thread = threading.Thread(target=_target, name=f"eval-run-{task_id}", daemon=True)
     thread.start()
 
     if not done.wait(timeout=timeout_seconds):
@@ -228,7 +228,7 @@ def _run_agent_with_timeout(
         raise error_holder[0]
 
     if not result_holder:
-        raise RuntimeError(f"Run {run_id} finished without a result payload")
+        raise RuntimeError(f"Run {task_id} finished without a result payload")
 
     return result_holder[0]
 
@@ -245,12 +245,12 @@ def process_problem(
     from miniprophet.models import get_model
     from miniprophet.search import get_search_tool
 
-    run_id = problem.run_id
-    run_dir = args.output_dir / "runs" / run_id
-    result = state.results.setdefault(run_id, RunResult(run_id=run_id, title=problem.title))
-    result.output_dir = f"runs/{run_id}"
+    task_id = problem.task_id
+    run_dir = args.output_dir / "runs" / task_id
+    result = state.results.setdefault(task_id, RunResult(task_id=task_id, title=problem.title))
+    result.output_dir = f"runs/{task_id}"
 
-    state.progress.on_run_start(run_id)
+    state.progress.on_run_start(task_id)
 
     agent: Any = None
     timed_out = False
@@ -260,7 +260,7 @@ def process_problem(
         if args.max_cost > 0 and state.total_cost_ref[0] >= args.max_cost:
             result.status = "skipped_cost_limit"
             result.error = f"Total eval cost limit (${args.max_cost:.2f}) reached."
-            state.progress.on_run_end(run_id, result.status)
+            state.progress.on_run_end(task_id, result.status)
             return True
 
         model = get_model(config=args.config.get("model", {}))
@@ -296,7 +296,7 @@ def process_problem(
             agent_name=args.agent_name,
             agent_import_path=args.agent_import_path,
             agent_kwargs=agent_kwargs,
-            run_id=run_id,
+            task_id=task_id,
             coordinator=state.coordinator,
             progress_manager=state.progress,
             cancel_event=cancel_event,
@@ -311,7 +311,7 @@ def process_problem(
             agent=agent,
             timeout_seconds=args.timeout_seconds,
             cancel_event=cancel_event,
-            run_id=run_id,
+            task_id=task_id,
             title=problem.title,
             outcomes=problem.outcomes,
             ground_truth=problem.ground_truth,
@@ -330,20 +330,20 @@ def process_problem(
         with state.summary_lock:
             state.total_cost_ref[0] += result.cost["total"]
 
-        state.progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(task_id, result.status)
         return True
 
     except SearchAuthError as exc:
         result.status = "auth_error"
         result.error = str(exc)
-        state.progress.on_run_end(run_id, result.status)
-        raise BatchFatalError(f"Run {run_id} failed with auth error: {exc}") from exc
+        state.progress.on_run_end(task_id, result.status)
+        raise BatchFatalError(f"Run {task_id} failed with auth error: {exc}") from exc
 
     except BatchRunTimeoutError as exc:
         timed_out = True
         result.status = type(exc).__name__
         result.error = str(exc)
-        state.progress.on_run_end(run_id, result.status)
+        state.progress.on_run_end(task_id, result.status)
         return True
 
     except Exception as exc:
@@ -353,23 +353,23 @@ def process_problem(
                 problem.retries += 1
                 logger.warning(
                     "Rate limit for %s (attempt %d/%d) -- will retry.",
-                    run_id,
+                    task_id,
                     problem.retries,
                     MAX_RETRIES,
                 )
-                state.progress.on_run_end(run_id, f"rate_limited (retry {problem.retries})")
+                state.progress.on_run_end(task_id, f"rate_limited (retry {problem.retries})")
                 return False
 
         if _is_auth_error(exc):
             result.status = "auth_error"
             result.error = str(exc)
-            state.progress.on_run_end(run_id, result.status)
-            raise BatchFatalError(f"Run {run_id} failed with auth error: {exc}") from exc
+            state.progress.on_run_end(task_id, result.status)
+            raise BatchFatalError(f"Run {task_id} failed with auth error: {exc}") from exc
 
         result.status = type(exc).__name__
         result.error = str(exc)
-        logger.error("Run %s failed: %s", run_id, exc, exc_info=True)
-        state.progress.on_run_end(run_id, result.status)
+        logger.error("Run %s failed: %s", task_id, exc, exc_info=True)
+        state.progress.on_run_end(task_id, result.status)
         return True
 
     finally:
@@ -377,7 +377,7 @@ def process_problem(
             try:
                 agent.save(run_dir)
             except Exception:
-                logger.error("Failed to save trajectory for %s", run_id, exc_info=True)
+                logger.error("Failed to save trajectory for %s", task_id, exc_info=True)
         _write_summary(args, state)
 
 
@@ -446,13 +446,13 @@ def run_eval(
                 return
             except Exception as exc:
                 result = state.results.setdefault(
-                    problem.run_id,
-                    RunResult(run_id=problem.run_id, title=problem.title),
+                    problem.task_id,
+                    RunResult(task_id=problem.task_id, title=problem.title),
                 )
                 result.status = type(exc).__name__
                 result.error = str(exc)
-                logger.error("Unhandled worker exception for %s", problem.run_id, exc_info=True)
-                state.progress.on_run_end(problem.run_id, result.status)
+                logger.error("Unhandled worker exception for %s", problem.task_id, exc_info=True)
+                state.progress.on_run_end(problem.task_id, result.status)
                 _write_summary(args, state)
             finally:
                 queue.task_done()

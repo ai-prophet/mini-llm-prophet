@@ -57,7 +57,7 @@ class EvalProgressManager:
         )
         self._task_bar = Progress(
             SpinnerColumn(spinner_name="dots2"),
-            TextColumn("{task.fields[run_id]}"),
+            TextColumn("{task.fields[task_id]}"),
             TextColumn("{task.fields[status]}"),
             TimeElapsedColumn(),
         )
@@ -94,40 +94,40 @@ class EvalProgressManager:
                 total_cost=f"{self._total_cost:.2f}",
             )
 
-    def on_run_start(self, run_id: str) -> None:
+    def on_run_start(self, task_id: str) -> None:
         with self._lock:
-            self._spinner_tasks[run_id] = self._task_bar.add_task(
-                description=f"Run {run_id}",
+            self._spinner_tasks[task_id] = self._task_bar.add_task(
+                description=f"Run {task_id}",
                 status="initializing",
                 total=None,
-                run_id=_shorten(run_id, 25, left=True),
+                task_id=_shorten(task_id, 25, left=True),
             )
 
-    def update_run_status(self, run_id: str, message: str, cost_delta: float = 0.0) -> None:
+    def update_run_status(self, task_id: str, message: str, cost_delta: float = 0.0) -> None:
         with self._lock:
-            if run_id in self._spinner_tasks:
+            if task_id in self._spinner_tasks:
                 self._task_bar.update(
-                    self._spinner_tasks[run_id],
+                    self._spinner_tasks[task_id],
                     status=_shorten(message, 30),
-                    run_id=_shorten(run_id, 25, left=True),
+                    task_id=_shorten(task_id, 25, left=True),
                 )
         if cost_delta:
             self._update_cost(cost_delta)
 
-    def on_run_end(self, run_id: str, exit_status: str | None) -> None:
+    def on_run_end(self, task_id: str, exit_status: str | None) -> None:
         with self._lock:
-            self._instances_by_status[exit_status or "unknown"].append(run_id)
-            if run_id in self._spinner_tasks:
+            self._instances_by_status[exit_status or "unknown"].append(task_id)
+            if task_id in self._spinner_tasks:
                 try:
-                    self._task_bar.remove_task(self._spinner_tasks[run_id])
+                    self._task_bar.remove_task(self._spinner_tasks[task_id])
                 except KeyError:
                     pass
             self._main_bar.update(TaskID(0), advance=1)
         self._refresh_status_table()
         self._update_cost()
 
-    def on_uncaught_exception(self, run_id: str, exc: Exception) -> None:
-        self.on_run_end(run_id, f"Uncaught {type(exc).__name__}")
+    def on_uncaught_exception(self, task_id: str, exc: Exception) -> None:
+        self.on_run_end(task_id, f"Uncaught {type(exc).__name__}")
 
 
 # Backward-compatible internal alias.

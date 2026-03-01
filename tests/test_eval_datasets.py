@@ -46,13 +46,13 @@ def test_registry_dataset_name_disallows_slash() -> None:
         )
 
 
-def test_forecast_task_row_maps_legacy_aliases() -> None:
+def test_forecast_task_row_parses_task_id_and_predict_by() -> None:
     row = ForecastTaskRow.model_validate(
         {
-            "run_id": "r1",
+            "task_id": "r1",
             "title": "Will A happen?",
             "outcomes": ["Yes", "No"],
-            "end_time": "2026-03-01",
+            "predict_by": "2026-03-01",
         }
     )
     assert row.task_id == "r1"
@@ -74,7 +74,7 @@ def test_load_problems_validates_schema_and_extra_fields(tmp_path: Path) -> None
     )
 
     problems = load_problems(path)
-    assert problems[0].run_id == "t1"
+    assert problems[0].task_id == "t1"
     assert problems[0].metadata["_extra_fields"]["random_col"] == "kept"
 
 

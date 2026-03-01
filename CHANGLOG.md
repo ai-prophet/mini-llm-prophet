@@ -59,7 +59,7 @@
 - `DefaultForecastAgent.run(...)` now accepts runtime kwargs and forwards them into tool execution.
 - `ForecastEnvironment.execute(...)` now merges runtime kwargs with action arguments.
 - Perplexity maps runtime date bounds to corresponding API filters (`search_*_date_filter`, `last_updated_*_filter`).
-- Batch mode supports per-problem `end_time` in JSONL; it is parsed and used as `search_date_before`.
+- Batch mode supports per-problem `predict_by` in JSONL; it is parsed and used as `search_date_before`.
 - Brave currently logs that runtime before/after filtering is not yet supported (while retaining `freshness` support).
 
 ### New: Source date metadata end-to-end
@@ -154,7 +154,7 @@ Instruction sections (Strategy, Guidelines) remain as markdown lists.
 ### Major: Batch agent running mode
 
 New `prophet batch` CLI command for running multiple forecasting problems in parallel:
-- Input: `.jsonl` file with `title`, `outcomes`, optional `ground_truth` and `run_id` per line
+- Input: `.jsonl` file with `title`, `outcomes`, optional `ground_truth` and `task_id` per line
 - Output: meta-directory with per-run artifacts and a `summary.json` with status, costs, submissions, and evaluations
 - Parallel execution via `--workers N` with a queue-based scheduler
 - Global `RateLimitCoordinator`: when any worker hits a rate limit, all workers pause for a backoff period

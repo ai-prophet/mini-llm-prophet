@@ -41,17 +41,9 @@ class ForecastTaskRow(BaseModel):
             "source",
             "criteria",
             "metadata",
-            "run_id",
-            "end_time",
         }
 
         data = dict(raw)
-
-        # Legacy compatibility aliases.
-        if "task_id" not in data and "run_id" in data:
-            data["task_id"] = data.get("run_id")
-        if "predict_by" not in data and "end_time" in data:
-            data["predict_by"] = data.get("end_time")
 
         extra_fields = {k: v for k, v in data.items() if k not in known}
         if extra_fields:
@@ -113,9 +105,9 @@ class ForecastTaskRow(BaseModel):
         return self
 
 
-def row_to_problem(row: ForecastTaskRow, run_id: str, offset: int = 0) -> ForecastProblem:
+def row_to_problem(row: ForecastTaskRow, task_id: str, offset: int = 0) -> ForecastProblem:
     return ForecastProblem(
-        run_id=run_id,
+        task_id=task_id,
         title=row.title,
         outcomes=row.outcomes,
         ground_truth=row.ground_truth,

@@ -30,14 +30,14 @@ def load_problems(path: Path, offset: int = 0) -> list[ForecastProblem]:
         except Exception as exc:
             raise ValueError(f"Line {line_no}: invalid task schema: {exc}") from exc
 
-        run_id = row.task_id or f"run_{auto_idx}"
+        task_id = row.task_id or f"task_{auto_idx}"
         if row.task_id is None:
             auto_idx += 1
 
-        if run_id in seen_ids:
-            raise ValueError(f"Line {line_no}: duplicate run_id/task_id '{run_id}'.")
-        seen_ids.add(run_id)
+        if task_id in seen_ids:
+            raise ValueError(f"Line {line_no}: duplicate task_id '{task_id}'.")
+        seen_ids.add(task_id)
 
-        problems.append(row_to_problem(row, run_id=run_id, offset=offset))
+        problems.append(row_to_problem(row, task_id=task_id, offset=offset))
 
     return problems

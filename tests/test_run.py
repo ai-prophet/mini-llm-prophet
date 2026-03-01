@@ -34,7 +34,7 @@ def test_build_batch_config_applies_overrides() -> None:
 
 
 def test_resolve_resume_state_disabled_returns_inputs(tmp_path: Path) -> None:
-    problems = [ForecastProblem(run_id="r1", title="T", outcomes=["A", "B"])]
+    problems = [ForecastProblem(task_id="r1", title="T", outcomes=["A", "B"])]
     filtered, results, total = _resolve_resume_state(
         enabled=False, output=tmp_path, problems=problems
     )
@@ -50,21 +50,21 @@ def test_resolve_resume_state_filters_completed_runs(tmp_path: Path) -> None:
             {
                 "total_cost": 1.0,
                 "runs": [
-                    {"run_id": "r1", "title": "t", "status": "submitted", "cost": {"total": 0.2}}
+                    {"task_id": "r1", "title": "t", "status": "submitted", "cost": {"total": 0.2}}
                 ],
             }
         )
     )
     problems = [
-        ForecastProblem(run_id="r1", title="T1", outcomes=["A", "B"]),
-        ForecastProblem(run_id="r2", title="T2", outcomes=["A", "B"]),
+        ForecastProblem(task_id="r1", title="T1", outcomes=["A", "B"]),
+        ForecastProblem(task_id="r2", title="T2", outcomes=["A", "B"]),
     ]
 
     filtered, results, total = _resolve_resume_state(
         enabled=True, output=tmp_path, problems=problems
     )
 
-    assert [p.run_id for p in filtered] == ["r2"]
+    assert [p.task_id for p in filtered] == ["r2"]
     assert "r1" in results
     assert total == pytest.approx(1.0)
 
@@ -75,11 +75,11 @@ def test_resolve_resume_state_rejects_unexpected_run_ids(tmp_path: Path) -> None
         json.dumps(
             {
                 "total_cost": 1.0,
-                "runs": [{"run_id": "unknown", "title": "t", "status": "submitted"}],
+                "runs": [{"task_id": "unknown", "title": "t", "status": "submitted"}],
             }
         )
     )
-    problems = [ForecastProblem(run_id="r1", title="T1", outcomes=["A", "B"])]
+    problems = [ForecastProblem(task_id="r1", title="T1", outcomes=["A", "B"])]
 
     with pytest.raises(typer.Exit):
         _resolve_resume_state(enabled=True, output=tmp_path, problems=problems)

@@ -96,17 +96,12 @@ Optional fields:
 - `criteria` (string)
 - `metadata` (object)
 
-Legacy aliases accepted during ingestion:
-
-- `run_id` -> `task_id`
-- `end_time` -> `predict_by`
-
 ## Resume mode (`--resume`)
 
 When enabled, eval startup checks `<output_dir>/summary.json`:
 
-- existing run IDs in summary are skipped
-- if summary includes run IDs not in current input, eval exits with an error
+- existing task IDs in summary are skipped
+- if summary includes task IDs not in current input, eval exits with an error
 
 ## Timeout config
 
@@ -122,6 +117,6 @@ eval:
 Given `-o outputs/eval-demo`:
 
 - `outputs/eval-demo/summary.json`
-- `outputs/eval-demo/runs/<run_id>/info.json`
-- `outputs/eval-demo/runs/<run_id>/trajectory.json`
-- `outputs/eval-demo/runs/<run_id>/sources.json`
+- `outputs/eval-demo/runs/<task_id>/info.json`
+- `outputs/eval-demo/runs/<task_id>/trajectory.json`
+- `outputs/eval-demo/runs/<task_id>/sources.json`

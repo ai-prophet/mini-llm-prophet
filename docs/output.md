@@ -110,9 +110,9 @@ for entry in payload["source_board"]:
 For eval output directory `<out>`:
 
 - `<out>/summary.json`
-- `<out>/runs/<run_id>/info.json`
-- `<out>/runs/<run_id>/trajectory.json`
-- `<out>/runs/<run_id>/sources.json`
+- `<out>/runs/<task_id>/info.json`
+- `<out>/runs/<task_id>/trajectory.json`
+- `<out>/runs/<task_id>/sources.json`
 
 Use `summary.json` to find failed/submitted runs, then open each run's trajectory and sources for detailed debugging.
 

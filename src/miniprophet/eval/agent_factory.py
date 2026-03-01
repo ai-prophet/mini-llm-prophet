@@ -50,7 +50,7 @@ class EvalAgentFactory:
         agent_name: str | None,
         agent_import_path: str | None,
         agent_kwargs: dict[str, Any],
-        run_id: str,
+        task_id: str,
         coordinator: RateLimitCoordinator | None,
         progress_manager: EvalProgressManager | None,
         cancel_event: threading.Event | None,
@@ -73,7 +73,7 @@ class EvalAgentFactory:
 
             return EvalBatchAgentWrapper(
                 agent=agent,
-                run_id=run_id,
+                task_id=task_id,
                 coordinator=coordinator,
                 progress_manager=progress_manager,
                 cancel_event=cancel_event,
@@ -91,7 +91,7 @@ class EvalAgentFactory:
             env=env,
             context_manager=context_manager,
             config_class=AgentConfig,
-            run_id=run_id,
+            task_id=task_id,
             coordinator=coordinator,
             progress_manager=progress_manager,
             cancel_event=cancel_event,
