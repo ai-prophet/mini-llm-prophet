@@ -1,4 +1,4 @@
-"""DefaultForecastAgent: the core agent loop for mini-llm-prophet."""
+"""DefaultForecastAgent: the core agent loop for mini-prophet."""
 
 from __future__ import annotations
 
@@ -275,7 +275,7 @@ class DefaultForecastAgent:
         res = dict()
         res["info"] = self.serialize_info(*extra_dicts)
         res["trajectory"] = self._trajectory.serialize()
-        res["trajectory"]["trajectory_format"] = f"mini-llm-prophet-v{__version__}"
+        res["trajectory"]["trajectory_format"] = f"mini-prophet-v{__version__}"
         if hasattr(self.env, "serialize_sources_state"):
             res["sources"] = self.env.serialize_sources_state()
         return res

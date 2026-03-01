@@ -1,4 +1,4 @@
-# Extending mini-llm-prophet
+# Extending mini-prophet
 
 This page covers extension points: search backends, tools, models, and context managers.
 

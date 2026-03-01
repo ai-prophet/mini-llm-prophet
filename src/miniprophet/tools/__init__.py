@@ -1,4 +1,4 @@
-"""Modular forecast tools for mini-llm-prophet."""
+"""Modular forecast tools for mini-prophet."""
 
 from miniprophet.tools.search_tool import SearchForecastTool
 from miniprophet.tools.source_board_tools import AddSourceTool, EditNoteTool

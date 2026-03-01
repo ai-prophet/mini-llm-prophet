@@ -1,4 +1,4 @@
-"""CLI entry point for mini-llm-prophet."""
+"""CLI entry point for mini-prophet."""
 
 from __future__ import annotations
 

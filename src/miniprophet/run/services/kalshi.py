@@ -1,4 +1,4 @@
-"""Kalshi prediction market service for mini-llm-prophet."""
+"""Kalshi prediction market service for mini-prophet."""
 
 from __future__ import annotations
 

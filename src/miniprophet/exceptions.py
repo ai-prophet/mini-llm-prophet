@@ -1,4 +1,4 @@
-"""Exception hierarchy for mini-llm-prophet.
+"""Exception hierarchy for mini-prophet.
 
 InterruptAgentFlow and its subclasses carry message dicts as payload,
 caught by the agent loop and injected into the conversation.

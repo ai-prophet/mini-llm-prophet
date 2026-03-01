@@ -1,4 +1,4 @@
-"""Exa Search API integration for mini-llm-prophet.
+"""Exa Search API integration for mini-prophet.
 
 Uses the official Exa Python SDK (`exa-py`) and requests page contents
 directly in the search call via the `contents` payload.

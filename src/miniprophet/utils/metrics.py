@@ -1,4 +1,4 @@
-"""Evaluation metrics for mini-llm-prophet forecasts."""
+"""Evaluation metrics for mini-prophet forecasts."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Brave Search API integration for mini-llm-prophet.
+"""Brave Search API integration for mini-prophet.
 
 Simplified synchronous implementation inspired by the reference snippet
 in snippets/brave_search.py.

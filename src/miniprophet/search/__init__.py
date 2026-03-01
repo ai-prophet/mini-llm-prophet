@@ -1,4 +1,4 @@
-"""Search tool interface and factory for mini-llm-prophet."""
+"""Search tool interface and factory for mini-prophet."""
 
 from __future__ import annotations
 

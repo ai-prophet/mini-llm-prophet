@@ -1,4 +1,4 @@
-"""LiteLLM model implementation for mini-llm-prophet."""
+"""LiteLLM model implementation for mini-prophet."""
 
 from __future__ import annotations
 
