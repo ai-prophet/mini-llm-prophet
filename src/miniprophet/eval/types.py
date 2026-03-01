@@ -1,0 +1,40 @@
+"""Core data types for prophet eval."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+
+def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
+    """Convert an arbitrary date string to MM/DD/YYYY with optional day offset."""
+    from datetime import timedelta
+
+    from dateutil import parser
+
+    dt = parser.parse(dt_str)
+    return (dt - timedelta(days=offset)).strftime("%m/%d/%Y")
+
+
+@dataclass
+class ForecastProblem:
+    """A single standardized forecast-eval problem."""
+
+    run_id: str
+    title: str
+    outcomes: list[str]
+    ground_truth: dict[str, int] | None = None
+    predict_by: str | None = None
+    context: str | None = None
+    source: str | None = None
+    criteria: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    retries: int = 0
+    offset: int = 0
+
+    def __post_init__(self) -> None:
+        if self.predict_by:
+            try:
+                self.predict_by = to_mm_dd_yyyy(self.predict_by, self.offset)
+            except ValueError:
+                self.predict_by = None

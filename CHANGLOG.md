@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+
+## v0.1.6
+
+### Major: `prophet eval` replaces `prophet batch`
+
+- Removed the `prophet batch` command and migrated the batch/eval execution entrypoint to
+  `prophet eval`.
+- Added support for two eval input modes:
+  - local JSONL (`--input/-f`)
+  - dataset reference (`--dataset/-d`)
+- Preserved core parallel-run behavior (workers, resume, max-cost, per-run timeout, summary
+  artifacts) under the new eval command.
+
+### New: standardized dataset management
+
+- Added `prophet datasets` command group with:
+  - `prophet datasets list`
+  - `prophet datasets download`
+  - `prophet datasets validate`
+- Added forecast task schema validation with required `title` and `outcomes`, plus support for
+  optional fields such as `task_id`, `context`, `ground_truth`, `predict_by`, `source`, `criteria`,
+  and `metadata`.
+- Added two dataset source patterns:
+  - registry datasets (`name`, `name@version`, `name@latest`)
+  - Hugging Face datasets (`username/dataset`, `username/dataset@revision`)
+- Added dataset caching under `MINIPROPHET_GLOBAL_CONFIG_DIR/datasets/...`.
 
 ### New: Exa search backend
 

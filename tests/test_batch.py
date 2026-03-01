@@ -8,9 +8,8 @@ from pathlib import Path
 import pytest
 from conftest import DummyEnvironment, DummyModel
 
-from miniprophet.agent.batch_agent import BatchForecastAgent, RateLimitCoordinator
-from miniprophet.exceptions import BatchRunTimeoutError, SearchRateLimitError
-from miniprophet.run.batch_runner import (
+from miniprophet.eval.agent_runtime import BatchForecastAgent, RateLimitCoordinator
+from miniprophet.eval.runner import (
     ForecastProblem,
     _is_auth_error,
     _is_rate_limit_error,
@@ -19,6 +18,7 @@ from miniprophet.run.batch_runner import (
     load_problems,
     to_mm_dd_yyyy,
 )
+from miniprophet.exceptions import BatchRunTimeoutError, SearchRateLimitError
 
 
 def test_to_mm_dd_yyyy_applies_offset() -> None:
@@ -26,8 +26,8 @@ def test_to_mm_dd_yyyy_applies_offset() -> None:
 
 
 def test_forecast_problem_invalid_end_time_becomes_none() -> None:
-    p = ForecastProblem(run_id="r1", title="t", outcomes=["a", "b"], end_time="not-a-date")
-    assert p.end_time is None
+    p = ForecastProblem(run_id="r1", title="t", outcomes=["a", "b"], predict_by="not-a-date")
+    assert p.predict_by is None
 
 
 def test_load_problems_assigns_auto_run_ids(tmp_path: Path) -> None:
@@ -159,7 +159,9 @@ def test_batch_forecast_agent_step_updates_progress(monkeypatch: pytest.MonkeyPa
         self.model_cost = 1.5
         return [{"role": "tool", "content": "ok"}]
 
-    monkeypatch.setattr("miniprophet.agent.batch_agent.DefaultForecastAgent.step", _fake_super_step)
+    monkeypatch.setattr(
+        "miniprophet.eval.agent_runtime.DefaultForecastAgent.step", _fake_super_step
+    )
 
     progress = _Progress()
     agent = BatchForecastAgent(

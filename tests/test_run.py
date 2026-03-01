@@ -8,8 +8,8 @@ import typer
 
 from miniprophet.cli.components.env_editor import is_valid_env_key
 from miniprophet.cli.utils import get_console
-from miniprophet.run.batch import _build_batch_config, _resolve_resume_state
-from miniprophet.run.batch_runner import ForecastProblem
+from miniprophet.eval.cli import _build_eval_config, _resolve_resume_state
+from miniprophet.eval.runner import ForecastProblem
 
 
 def test_get_console_is_singleton() -> None:
@@ -22,7 +22,7 @@ def test_is_valid_env_key_accepts_and_rejects() -> None:
 
 
 def test_build_batch_config_applies_overrides() -> None:
-    cfg = _build_batch_config(
+    cfg = _build_eval_config(
         config_spec=None,
         max_cost_per_run=0.5,
         model_name="openai/gpt-4o-mini",

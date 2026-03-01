@@ -222,3 +222,7 @@ scripts/
 # Ignore all .jsonl files except examples/example_batch_job.jsonl
 *.jsonl
 !examples/example_batch_job.jsonl
+
+# AI assistant files
+.cursor/
+.codex/

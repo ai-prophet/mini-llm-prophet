@@ -4,7 +4,7 @@ This page describes what gets saved and how to reconstruct full run history.
 
 ## What is saved
 
-When output is enabled (`--output` for single run, or batch run directories), each run writes:
+When output is enabled (`--output` for single run, or eval run directories), each run writes:
 
 - `info.json`
 - `trajectory.json`
@@ -105,9 +105,9 @@ for entry in payload["source_board"]:
     print(sid, source.get("title", ""))
 ```
 
-## Batch output layout
+## Eval output layout
 
-For batch output directory `<out>`:
+For eval output directory `<out>`:
 
 - `<out>/summary.json`
 - `<out>/runs/<run_id>/info.json`
@@ -116,9 +116,9 @@ For batch output directory `<out>`:
 
 Use `summary.json` to find failed/submitted runs, then open each run's trajectory and sources for detailed debugging.
 
-Common batch statuses you may see in `summary.json` include:
+Common eval statuses you may see in `summary.json` include:
 
 - `submitted`
-- `BatchRunTimeoutError` (run exceeded `batch.timeout`)
+- `BatchRunTimeoutError` (run exceeded `eval.timeout`)
 - `skipped_cost_limit`
 - auth/network/rate-limit related error statuses

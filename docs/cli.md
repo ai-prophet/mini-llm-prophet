@@ -1,13 +1,14 @@
 # CLI (Single Run)
 
-This page covers the non-batch CLI flow: `prophet run`.
+This page covers the single-run CLI flow: `prophet run`.
 
 ## Commands
 
 Root app:
 
 - `prophet run` - single forecast (interactive or argument-driven)
-- `prophet batch` - batch forecasting (see `docs/batch.md`)
+- `prophet eval` - eval forecasting (see `docs/eval.md`)
+- `prophet datasets` - dataset list/download/validate (see `docs/datasets.md`)
 
 ## `prophet run` usage
 

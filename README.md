@@ -72,21 +72,34 @@ Interactive mode:
 prophet run -i --model-class litellm --model gemini/gemini-3-flash-preview
 ```
 
-Batch mode with the sample file:
+Eval mode with the sample file:
 
 ```bash
-prophet batch \
+prophet eval \
   -f examples/example_batch_job.jsonl \
-  -o outputs/batch-demo \
+  -o outputs/eval-demo \
   -w 4 \
   --model-class litellm \
   --model gemini/gemini-3-flash-preview
 ```
 
-Resume an interrupted batch and skip completed run IDs:
+Resume an interrupted eval run and skip completed run IDs:
 
 ```bash
-prophet batch -f examples/example_batch_job.jsonl -o outputs/batch-demo --resume
+prophet eval -f examples/example_batch_job.jsonl -o outputs/eval-demo --resume
+```
+
+Run eval directly from a standardized dataset:
+
+```bash
+prophet eval -d weekly-nba@latest -o outputs/weekly-nba
+```
+
+List and validate datasets:
+
+```bash
+prophet datasets list
+prophet datasets validate -f examples/example_batch_job.jsonl
 ```
 
 Run artifacts now include `sources.json` in addition to `info.json` and `trajectory.json`.
@@ -101,7 +114,8 @@ Detailed docs are split by topic:
 
 - [Architecture](docs/architecture.md)
 - [CLI (single run)](docs/cli.md)
-- [Batch processing](docs/batch.md)
+- [Eval processing](docs/eval.md)
+- [Dataset management](docs/datasets.md)
 - [Extending the framework](docs/extension.md)
 - [Output and trajectory format](docs/output.md)
 

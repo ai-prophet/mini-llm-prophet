@@ -1,4 +1,4 @@
-"""Core batch orchestration for running multiple forecasting problems."""
+"""Core eval orchestration for running multiple forecasting problems."""
 
 from __future__ import annotations
 
@@ -10,45 +10,28 @@ from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
-from miniprophet.agent.batch_agent import BatchForecastAgent, RateLimitCoordinator
+from miniprophet.eval.agent_factory import EvalAgentFactory
+from miniprophet.eval.agent_runtime import RateLimitCoordinator
+from miniprophet.eval.datasets.validate import load_problems as _load_problems
+from miniprophet.eval.progress import EvalProgressManager
+from miniprophet.eval.types import ForecastProblem
+from miniprophet.eval.types import to_mm_dd_yyyy as _to_mm_dd_yyyy
 from miniprophet.exceptions import (
     BatchFatalError,
     BatchRunTimeoutError,
     SearchAuthError,
     SearchRateLimitError,
 )
-from miniprophet.run.batch_progress import BatchProgressManager
 
-logger = logging.getLogger("miniprophet.batch")
+logger = logging.getLogger("miniprophet.eval")
 
 MAX_RETRIES = 3
-
 RETRYABLE_EXCEPTIONS = (SearchRateLimitError,)
 
 
 @dataclass
-class ForecastProblem:
-    """A single forecasting problem from the input JSONL."""
-
-    run_id: str
-    title: str
-    outcomes: list[str]
-    ground_truth: dict[str, int] | None = None
-    end_time: str | None = None
-    retries: int = 0
-    offset: int = 0
-
-    def __post_init__(self):
-        if self.end_time:
-            try:
-                self.end_time = to_mm_dd_yyyy(self.end_time, self.offset)
-            except ValueError:
-                self.end_time = None
-
-
-@dataclass
 class RunResult:
-    """Result summary for one forecasting run."""
+    """Result summary for one eval run."""
 
     run_id: str
     title: str
@@ -93,8 +76,8 @@ class RunResult:
 
 
 @dataclass
-class BatchRunArgs:
-    """Runtime arguments for a batch execution."""
+class EvalRunArgs:
+    """Runtime arguments for an eval execution."""
 
     output_dir: Path
     config: dict
@@ -105,14 +88,18 @@ class BatchRunArgs:
     initial_total_cost: float = 0.0
     search_date_before: str | None = None
     search_date_after: str | None = None
+    dataset_info: dict[str, Any] = field(default_factory=dict)
+    agent_name: str | None = None
+    agent_import_path: str | None = None
+    agent_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class BatchRunState:
-    """Shared mutable state for workers in a single batch execution."""
+class EvalRunState:
+    """Shared mutable state for workers in a single eval execution."""
 
     coordinator: RateLimitCoordinator
-    progress: BatchProgressManager
+    progress: EvalProgressManager
     summary_lock: threading.Lock
     summary_path: Path
     results: dict[str, RunResult]
@@ -122,63 +109,8 @@ class BatchRunState:
     fatal_error: str | None = None
 
 
-def to_mm_dd_yyyy(dt_str: str, offset: int = 0) -> str:
-    from datetime import timedelta
-
-    from dateutil import parser
-
-    dt = parser.parse(dt_str)
-    return (dt - timedelta(days=offset)).strftime("%m/%d/%Y")
-
-
-def load_problems(path: Path, offset: int = 0) -> list[ForecastProblem]:
-    """Load and validate forecasting problems from a JSONL file."""
-    problems: list[ForecastProblem] = []
-    seen_ids: set[str] = set()
-    auto_idx = 0
-
-    for line_no, line in enumerate(path.read_text().splitlines(), 1):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Invalid JSON at line {line_no}: {exc}") from exc
-
-        if "title" not in data or "outcomes" not in data:
-            raise ValueError(f"Line {line_no}: 'title' and 'outcomes' are required fields.")
-
-        run_id = data.get("run_id")
-        if run_id is None:
-            run_id = f"run_{auto_idx}"
-            auto_idx += 1
-        else:
-            run_id = str(run_id)
-
-        if run_id in seen_ids:
-            raise ValueError(f"Line {line_no}: duplicate run_id '{run_id}'.")
-        seen_ids.add(run_id)
-
-        problems.append(
-            ForecastProblem(
-                run_id=run_id,
-                title=data["title"],
-                outcomes=data["outcomes"],
-                ground_truth=data.get("ground_truth"),
-                end_time=data.get("end_time"),
-                offset=offset,
-            )
-        )
-
-    return problems
-
-
 def load_existing_summary(path: Path) -> tuple[dict[str, RunResult], float]:
-    """Load existing summary.json into RunResult mapping and total_cost.
-
-    Returns empty state when summary file does not exist.
-    """
+    """Load existing summary.json into RunResult mapping and total_cost."""
     if not path.exists():
         return {}, 0.0
 
@@ -204,7 +136,6 @@ def load_existing_summary(path: Path) -> tuple[dict[str, RunResult], float]:
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
-    """Check if an exception indicates a rate limit (retryable)."""
     if isinstance(exc, RETRYABLE_EXCEPTIONS):
         return True
     exc_str = str(exc).lower()
@@ -212,7 +143,6 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
 
 def _is_auth_error(exc: Exception) -> bool:
-    """Check if an exception indicates auth/API credential failure."""
     name = type(exc).__name__.lower()
     msg = str(exc).lower()
 
@@ -233,9 +163,14 @@ def _is_auth_error(exc: Exception) -> bool:
     return any(token in msg for token in auth_tokens)
 
 
-def _write_summary(args: BatchRunArgs, state: BatchRunState) -> None:
+def _write_summary(args: EvalRunArgs, state: EvalRunState) -> None:
     summary = {
-        "batch_config": {k: v for k, v in args.config.items() if k != "agent"},
+        "eval_config": {k: v for k, v in args.config.items() if k != "agent"},
+        "eval": {
+            **args.dataset_info,
+            "agent_name": args.agent_name or "default",
+            "agent_import_path": args.agent_import_path,
+        },
         "total_cost": state.total_cost_ref[0],
         "runs": [r.to_dict() for r in state.results.values()],
     }
@@ -246,7 +181,7 @@ def _write_summary(args: BatchRunArgs, state: BatchRunState) -> None:
 
 def _run_agent_with_timeout(
     *,
-    agent: BatchForecastAgent,
+    agent: Any,
     timeout_seconds: float,
     cancel_event: threading.Event,
     run_id: str,
@@ -282,12 +217,12 @@ def _run_agent_with_timeout(
         finally:
             done.set()
 
-    thread = threading.Thread(target=_target, name=f"batch-run-{run_id}", daemon=True)
+    thread = threading.Thread(target=_target, name=f"eval-run-{run_id}", daemon=True)
     thread.start()
 
     if not done.wait(timeout=timeout_seconds):
         cancel_event.set()
-        raise BatchRunTimeoutError(f"Batch run timed out after {timeout_seconds:.1f}s")
+        raise BatchRunTimeoutError(f"Eval run timed out after {timeout_seconds:.1f}s")
 
     if error_holder:
         raise error_holder[0]
@@ -300,10 +235,10 @@ def _run_agent_with_timeout(
 
 def process_problem(
     problem: ForecastProblem,
-    args: BatchRunArgs,
-    state: BatchRunState,
+    args: EvalRunArgs,
+    state: EvalRunState,
 ) -> bool:
-    """Process a single forecasting problem. Returns True if successful or permanently failed."""
+    """Process a single forecasting problem. Returns True if complete/permanent failure."""
     from miniprophet.agent.context import SlidingWindowContextManager
     from miniprophet.environment.forecast_env import ForecastEnvironment, create_default_tools
     from miniprophet.environment.source_board import SourceBoard
@@ -317,13 +252,14 @@ def process_problem(
 
     state.progress.on_run_start(run_id)
 
-    agent = None
+    agent: Any = None
     timed_out = False
     cancel_event = threading.Event()
+
     try:
         if args.max_cost > 0 and state.total_cost_ref[0] >= args.max_cost:
             result.status = "skipped_cost_limit"
-            result.error = f"Total batch cost limit (${args.max_cost:.2f}) reached."
+            result.error = f"Total eval cost limit (${args.max_cost:.2f}) reached."
             state.progress.on_run_end(run_id, result.status)
             return True
 
@@ -332,7 +268,7 @@ def process_problem(
         search_backend = get_search_tool(search_cfg=search_cfg)
 
         agent_cfg = args.config.get("agent", {})
-        agent_search_limit = agent_cfg.get("search_limit", 10)
+        agent_search_limit = int(agent_cfg.get("search_limit", 10) or 10)
         board = SourceBoard()
         tools = create_default_tools(
             search_tool=search_backend,
@@ -344,23 +280,30 @@ def process_problem(
         )
         env = ForecastEnvironment(tools, board=board)
 
-        context_window = agent_cfg.get("context_window", 6)
+        context_window = int(agent_cfg.get("context_window", 6) or 0)
         ctx_mgr = (
             SlidingWindowContextManager(window_size=context_window) if context_window > 0 else None
         )
-        agent = BatchForecastAgent(
+
+        agent_kwargs = dict(args.agent_kwargs)
+        if not args.agent_import_path:
+            agent_kwargs = {**agent_cfg, **agent_kwargs}
+
+        agent = EvalAgentFactory.create(
             model=model,
             env=env,
             context_manager=ctx_mgr,
+            agent_name=args.agent_name,
+            agent_import_path=args.agent_import_path,
+            agent_kwargs=agent_kwargs,
             run_id=run_id,
             coordinator=state.coordinator,
             progress_manager=state.progress,
             cancel_event=cancel_event,
-            **agent_cfg,
         )
 
         runtime_kwargs = {
-            "search_date_before": args.search_date_before or problem.end_time,
+            "search_date_before": args.search_date_before or problem.predict_by,
             "search_date_after": args.search_date_after,
         }
 
@@ -379,13 +322,13 @@ def process_problem(
         result.submission = forecast.get("submission") or None
         result.evaluation = forecast.get("evaluation") or None
         result.cost = {
-            "model": agent.model_cost,
-            "search": agent.search_cost,
-            "total": agent.total_cost,
+            "model": float(getattr(agent, "model_cost", 0.0) or 0.0),
+            "search": float(getattr(agent, "search_cost", 0.0) or 0.0),
+            "total": float(getattr(agent, "total_cost", 0.0) or 0.0),
         }
 
         with state.summary_lock:
-            state.total_cost_ref[0] += agent.total_cost
+            state.total_cost_ref[0] += result.cost["total"]
 
         state.progress.on_run_end(run_id, result.status)
         return True
@@ -438,19 +381,19 @@ def process_problem(
         _write_summary(args, state)
 
 
-def run_batch(
+def run_eval(
     problems: list[ForecastProblem],
-    args: BatchRunArgs,
+    args: EvalRunArgs,
 ) -> dict[str, RunResult]:
-    """Execute a batch of forecasting problems with parallel workers."""
+    """Execute eval with parallel workers."""
     import concurrent.futures
 
     from rich.live import Live
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    state = BatchRunState(
+    state = EvalRunState(
         coordinator=RateLimitCoordinator(),
-        progress=BatchProgressManager(len(problems)),
+        progress=EvalProgressManager(len(problems)),
         summary_lock=threading.Lock(),
         summary_path=args.output_dir / "summary.json",
         results=dict(args.initial_results or {}),
@@ -520,7 +463,7 @@ def run_batch(
             try:
                 queue.join()
             except KeyboardInterrupt:
-                logger.info("Batch interrupted by user. Waiting for active runs to finish...")
+                logger.info("Eval interrupted by user. Waiting for active runs to finish...")
             for f in futures:
                 try:
                     f.result(timeout=1)
@@ -530,6 +473,14 @@ def run_batch(
     _write_summary(args, state)
 
     if state.fatal_event.is_set():
-        raise BatchFatalError(state.fatal_error or "Batch terminated due to a fatal error.")
+        raise BatchFatalError(state.fatal_error or "Eval terminated due to a fatal error.")
 
     return state.results
+
+
+# Backward internal aliases for migrated test names.
+BatchRunArgs = EvalRunArgs
+BatchRunState = EvalRunState
+run_batch = run_eval
+load_problems = _load_problems
+to_mm_dd_yyyy = _to_mm_dd_yyyy

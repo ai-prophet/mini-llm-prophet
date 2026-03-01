@@ -1,4 +1,4 @@
-"""Rich progress display for batch forecasting runs."""
+"""Rich progress display for eval forecasting runs."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ def _shorten(s: str, max_len: int, *, left: bool = False) -> str:
     return f"{s[: max_len - 3] + '...':<{max_len}}"
 
 
-class BatchProgressManager:
-    """Thread-safe progress tracker for batch forecast runs.
+class EvalProgressManager:
+    """Thread-safe progress tracker for eval forecast runs.
 
     Renders an overall progress bar, a per-instance spinner table,
     and an exit-status summary table via Rich Live.
@@ -63,7 +63,7 @@ class BatchProgressManager:
         )
 
         self._main_task_id = self._main_bar.add_task(
-            "[cyan]Batch Progress", total=total, total_cost="0.00"
+            "[cyan]Eval Progress", total=total, total_cost="0.00"
         )
 
         self._status_table = Table()
@@ -128,3 +128,7 @@ class BatchProgressManager:
 
     def on_uncaught_exception(self, run_id: str, exc: Exception) -> None:
         self.on_run_end(run_id, f"Uncaught {type(exc).__name__}")
+
+
+# Backward-compatible internal alias.
+BatchProgressManager = EvalProgressManager
