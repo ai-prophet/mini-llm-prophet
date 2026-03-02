@@ -66,8 +66,8 @@ class ForecastTaskRow(BaseModel):
     @classmethod
     def _validate_outcomes(cls, value: list[str]) -> list[str]:
         cleaned = [o.strip() for o in value if isinstance(o, str) and o.strip()]
-        if len(cleaned) < 2:
-            raise ValueError("outcomes must contain at least 2 non-empty strings")
+        if len(cleaned) < 1:
+            raise ValueError("outcomes must contain at least 1 non-empty string")
         return cleaned
 
     @field_validator("predict_by")

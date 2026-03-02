@@ -154,6 +154,17 @@ def test_forecast_task_row_parses_task_id_and_predict_by() -> None:
     assert row.predict_by == "2026-03-01"
 
 
+def test_forecast_task_row_allows_single_outcome() -> None:
+    row = ForecastTaskRow.model_validate(
+        {
+            "task_id": "single",
+            "title": "Will A happen?",
+            "outcomes": ["Yes"],
+        }
+    )
+    assert row.outcomes == ["Yes"]
+
+
 def test_load_problems_validates_schema_and_extra_fields(tmp_path: Path) -> None:
     path = tmp_path / "tasks.jsonl"
     path.write_text(

@@ -84,7 +84,7 @@ prophet eval \
 Each task row is one JSON object. Required field:
 
 - `title` (string)
-- `outcomes` (array of strings, length >= 2)
+- `outcomes` (array of strings, length >= 1)
 
 Optional fields:
 
