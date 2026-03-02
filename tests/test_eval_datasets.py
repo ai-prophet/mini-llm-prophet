@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 
 from miniprophet.eval.datasets.loader import DatasetSourceKind, parse_dataset_ref
-from miniprophet.eval.datasets.registry import RegistryDatasetSpec, resolve_latest_version
+from miniprophet.eval.datasets.registry import (
+    RegistryDataset,
+    RegistryDatasetSpec,
+    load_registry,
+    resolve_latest_version,
+    resolve_registry_dataset,
+)
 from miniprophet.eval.datasets.schema import ForecastTaskRow
 from miniprophet.eval.datasets.validate import load_problems
 
@@ -34,7 +40,7 @@ def test_resolve_latest_version_prefers_date_then_semver() -> None:
     assert resolve_latest_version(["1.2.0", "v2.0.0", "alpha"]) == "v2.0.0"
 
 
-def test_registry_dataset_name_disallows_slash() -> None:
+def test_registry_dataset_spec_name_disallows_slash() -> None:
     with pytest.raises(ValueError, match="cannot contain '/'"):
         RegistryDatasetSpec(
             name="alice/dataset",
@@ -44,6 +50,95 @@ def test_registry_dataset_name_disallows_slash() -> None:
             git_ref="main",
             path="dataset.jsonl",
         )
+
+
+def test_registry_dataset_group_name_disallows_slash() -> None:
+    with pytest.raises(ValueError, match="cannot contain '/'"):
+        RegistryDataset.model_validate(
+            {
+                "name": "alice/dataset",
+                "description": "x",
+                "latest": "2026-03-01",
+                "versions": [
+                    {
+                        "version": "2026-03-01",
+                        "git_url": "https://example.com/repo.git",
+                        "git_ref": "main",
+                        "path": "datasets/alice/2026-03-01/tasks.jsonl",
+                    }
+                ],
+            }
+        )
+
+
+def test_load_grouped_registry_and_resolve_latest(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    path.write_text(
+        json.dumps(
+            {
+                "datasets": [
+                    {
+                        "name": "dummy",
+                        "description": "Dummy dataset",
+                        "latest": "2026-03-02",
+                        "versions": [
+                            {
+                                "version": "2026-03-01",
+                                "git_url": "https://github.com/ai-prophet/ai-prophet-datasets.git",
+                                "git_ref": "sha1",
+                                "path": "datasets/dummy/2026-03-01/tasks.jsonl",
+                            },
+                            {
+                                "version": "2026-03-02",
+                                "git_url": "https://github.com/ai-prophet/ai-prophet-datasets.git",
+                                "git_ref": "sha2",
+                                "path": "datasets/dummy/2026-03-02/tasks.jsonl",
+                            },
+                        ],
+                    }
+                ]
+            }
+        )
+    )
+
+    registry = load_registry(registry_path=path)
+    spec = resolve_registry_dataset(registry, name="dummy", version=None)
+    assert spec.version == "2026-03-02"
+    assert spec.path == "datasets/dummy/2026-03-02/tasks.jsonl"
+    assert spec.description == "Dummy dataset"
+
+
+def test_load_legacy_registry_and_resolve_latest_alias(tmp_path: Path) -> None:
+    path = tmp_path / "registry.json"
+    path.write_text(
+        json.dumps(
+            {
+                "datasets": [
+                    {
+                        "name": "dummy",
+                        "version": "2026-03-02",
+                        "description": "Dummy dataset",
+                        "git_url": "https://github.com/ai-prophet/ai-prophet-datasets.git",
+                        "git_ref": "sha2",
+                        "path": "datasets/dummy/2026-03-02/tasks.jsonl",
+                    },
+                    {
+                        "name": "dummy",
+                        "version": "latest",
+                        "description": "Dummy latest alias",
+                        "git_url": "https://github.com/ai-prophet/ai-prophet-datasets.git",
+                        "git_ref": "sha2",
+                        "path": "datasets/dummy/2026-03-02/tasks.jsonl",
+                    },
+                ]
+            }
+        )
+    )
+
+    registry = load_registry(registry_path=path)
+    spec = resolve_registry_dataset(registry, name="dummy", version="latest")
+    assert spec.version == "latest"
+    assert spec.description == "Dummy latest alias"
 
 
 def test_forecast_task_row_parses_task_id_and_predict_by() -> None:

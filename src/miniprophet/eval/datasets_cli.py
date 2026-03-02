@@ -9,15 +9,74 @@ from rich.table import Table
 from typer import Argument, Option, Typer
 
 from miniprophet.eval.datasets.loader import resolve_dataset_to_jsonl
-from miniprophet.eval.datasets.registry import load_registry
+from miniprophet.eval.datasets.registry import (
+    load_registry,
+    resolve_latest_version,
+    sort_versions_desc,
+)
 from miniprophet.eval.datasets.validate import load_problems
 
 datasets_app = Typer(name="datasets", no_args_is_help=True)
 console = Console()
 
 
+def _resolve_dataset_latest(dataset) -> str:
+    return dataset.latest or resolve_latest_version([v.version for v in dataset.versions])
+
+
+def _format_versions_preview(dataset, latest: str) -> str:
+    ordered = sort_versions_desc([v.version for v in dataset.versions if v.version != latest])
+    lines = [f"{latest} (latest)"]
+    lines.extend(ordered[:2])
+    if len(dataset.versions) > 3:
+        lines.append(f"(...{len(dataset.versions) - 3} more versions)")
+    return "\n".join(lines)
+
+
+def _render_dataset_index(registry) -> None:
+    table = Table(title="Available Datasets", show_lines=True)
+    table.add_column("Name", style="cyan")
+    table.add_column("Latest", style="magenta")
+    table.add_column("Versions", style="green")
+    table.add_column("Description", style="white")
+
+    for dataset in sorted(registry.datasets, key=lambda d: d.name):
+        latest = _resolve_dataset_latest(dataset)
+        versions_preview = _format_versions_preview(dataset, latest)
+        table.add_row(dataset.name, latest, versions_preview, dataset.description or "")
+
+    console.print(table)
+    console.print(f"\n[green]Total datasets:[/green] {len(registry.datasets)}")
+
+
+def _render_dataset_versions(registry, dataset_name: str) -> None:
+    dataset = next((d for d in registry.datasets if d.name == dataset_name), None)
+    if dataset is None:
+        raise ValueError(f"Dataset '{dataset_name}' not found in registry")
+
+    latest = _resolve_dataset_latest(dataset)
+    ordered = sort_versions_desc([v.version for v in dataset.versions])
+
+    table = Table(title=f"Dataset Versions: {dataset.name}", show_lines=True)
+    table.add_column("Version", style="magenta")
+    table.add_column("Tag", style="green")
+
+    for version in ordered:
+        table.add_row(version, "latest" if version == latest else "")
+
+    console.print(table)
+    if dataset.description:
+        console.print(f"[cyan]Description:[/cyan] {dataset.description}")
+    console.print(f"[cyan]Latest:[/cyan] {latest}")
+    console.print(f"[cyan]Total versions:[/cyan] {len(dataset.versions)}")
+
+
 @datasets_app.command("list")
 def list_datasets(
+    dataset_name: str | None = Argument(
+        None,
+        help="Optional dataset name to display all available versions.",
+    ),
     registry_path: Path | None = Option(
         None,
         "--registry-path",
@@ -31,25 +90,19 @@ def list_datasets(
 ) -> None:
     """List datasets available in the registry."""
     try:
-        datasets = load_registry(registry_path=registry_path, registry_url=registry_url)
+        registry = load_registry(registry_path=registry_path, registry_url=registry_url)
     except Exception as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise
 
-    if not datasets:
+    if not registry.datasets:
         console.print("[yellow]No datasets found.[/yellow]")
         return
 
-    table = Table(title="Available Datasets", show_lines=True)
-    table.add_column("Name", style="cyan")
-    table.add_column("Version", style="magenta")
-    table.add_column("Description", style="white")
-
-    for item in sorted(datasets, key=lambda d: (d.name, d.version)):
-        table.add_row(item.name, item.version, item.description or "")
-
-    console.print(table)
-    console.print(f"\n[green]Total datasets:[/green] {len(datasets)}")
+    if dataset_name is None:
+        _render_dataset_index(registry)
+    else:
+        _render_dataset_versions(registry, dataset_name=dataset_name)
 
 
 @datasets_app.command("download")

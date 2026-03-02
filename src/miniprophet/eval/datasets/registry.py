@@ -13,12 +13,12 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from miniprophet.eval.datasets.cache import get_registry_cache_path
 
 DEFAULT_REGISTRY_URL = (
-    "https://raw.githubusercontent.com/mini-prophet/mini-prophet-datasets/main/registry.json"
+    "https://raw.githubusercontent.com/ai-prophet/ai-prophet-datasets/main/registry.json"
 )
 
 
@@ -40,6 +40,57 @@ class RegistryDatasetSpec(BaseModel):
         if "/" in value:
             raise ValueError("registry dataset names cannot contain '/'")
         return value
+
+
+class RegistryDatasetVersionSpec(BaseModel):
+    version: str
+    git_url: str
+    git_ref: str
+    path: str
+    checksum_sha256: str | None = Field(default=None)
+    description: str = ""
+
+
+class RegistryDataset(BaseModel):
+    name: str
+    description: str = ""
+    latest: str | None = None
+    versions: list[RegistryDatasetVersionSpec]
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("dataset name must be non-empty")
+        if "/" in value:
+            raise ValueError("registry dataset names cannot contain '/'")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_versions(self) -> RegistryDataset:
+        if not self.versions:
+            raise ValueError(f"Dataset '{self.name}' must have at least one version entry")
+
+        seen: set[str] = set()
+        for version in self.versions:
+            if version.version in seen:
+                raise ValueError(
+                    f"Dataset '{self.name}' has duplicate version '{version.version}' entries"
+                )
+            seen.add(version.version)
+
+        if self.latest is not None and self.latest not in seen:
+            raise ValueError(
+                f"Dataset '{self.name}' latest='{self.latest}' is not present in versions"
+            )
+
+        return self
+
+
+@dataclass(frozen=True)
+class RegistryCatalog:
+    datasets: list[RegistryDataset]
 
 
 @dataclass(frozen=True)
@@ -75,20 +126,64 @@ def resolve_latest_version(versions: list[str]) -> str:
     return max(versions, key=_version_kind_and_key)
 
 
-def _parse_registry_payload(payload: str) -> list[RegistryDatasetSpec]:
+def sort_versions_desc(versions: list[str]) -> list[str]:
+    """Sort version labels from most-recent/highest to oldest/lowest."""
+    return sorted(versions, key=_version_kind_and_key, reverse=True)
+
+
+def _parse_registry_payload(payload: str) -> RegistryCatalog:
     data = json.loads(payload)
     if isinstance(data, dict) and "datasets" in data:
         data = data["datasets"]
     if not isinstance(data, list):
-        raise ValueError("Registry payload must be a list of dataset entries")
-    return [RegistryDatasetSpec.model_validate(item) for item in data]
+        raise ValueError("Registry payload must be a list of dataset entries/groups")
+
+    if not data:
+        return RegistryCatalog(datasets=[])
+
+    if isinstance(data[0], dict) and "versions" in data[0]:
+        datasets = [RegistryDataset.model_validate(item) for item in data]
+        return RegistryCatalog(datasets=datasets)
+
+    specs = [RegistryDatasetSpec.model_validate(item) for item in data]
+    grouped: dict[str, dict] = {}
+    for spec in specs:
+        dataset = grouped.setdefault(
+            spec.name,
+            {
+                "name": spec.name,
+                "description": spec.description or "",
+                "latest": None,
+                "versions": [],
+            },
+        )
+        if not dataset["description"] and spec.description:
+            dataset["description"] = spec.description
+
+        dataset["versions"].append(
+            {
+                "version": spec.version,
+                "git_url": spec.git_url,
+                "git_ref": spec.git_ref,
+                "path": spec.path,
+                "checksum_sha256": spec.checksum_sha256,
+                "description": spec.description,
+            }
+        )
+
+        if spec.version == "latest":
+            dataset["latest"] = "latest"
+
+    return RegistryCatalog(
+        datasets=[RegistryDataset.model_validate(item) for item in grouped.values()]
+    )
 
 
 def load_registry(
     *,
     registry_path: Path | None = None,
     registry_url: str | None = None,
-) -> list[RegistryDatasetSpec]:
+) -> RegistryCatalog:
     if registry_path is not None and registry_url is not None:
         raise ValueError("Cannot specify both registry_path and registry_url")
 
@@ -104,25 +199,38 @@ def load_registry(
 
 
 def resolve_registry_dataset(
-    datasets: list[RegistryDatasetSpec],
+    registry: RegistryCatalog,
     *,
     name: str,
     version: str | None,
 ) -> RegistryDatasetSpec:
-    candidates = [d for d in datasets if d.name == name]
-    if not candidates:
+    dataset = next((d for d in registry.datasets if d.name == name), None)
+    if dataset is None:
         raise ValueError(f"Dataset '{name}' not found in registry")
 
+    versions_by_name = {entry.version: entry for entry in dataset.versions}
+
     if version is None or version == "latest":
-        resolved_version = resolve_latest_version([d.version for d in candidates])
+        if dataset.latest is not None:
+            resolved_version = dataset.latest
+        else:
+            resolved_version = resolve_latest_version([entry.version for entry in dataset.versions])
     else:
         resolved_version = version
 
-    for dataset in candidates:
-        if dataset.version == resolved_version:
-            return dataset
+    resolved = versions_by_name.get(resolved_version)
+    if resolved is None:
+        raise ValueError(f"Dataset '{name}@{resolved_version}' not found in registry")
 
-    raise ValueError(f"Dataset '{name}@{resolved_version}' not found in registry")
+    return RegistryDatasetSpec(
+        name=dataset.name,
+        version=resolved.version,
+        description=resolved.description or dataset.description,
+        git_url=resolved.git_url,
+        git_ref=resolved.git_ref,
+        path=resolved.path,
+        checksum_sha256=resolved.checksum_sha256,
+    )
 
 
 def _sha256_file(path: Path) -> str:

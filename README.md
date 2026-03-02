@@ -99,6 +99,7 @@ List and validate datasets:
 
 ```bash
 prophet datasets list
+prophet datasets list weekly-nba
 prophet datasets validate -f examples/example_batch_job.jsonl
 ```
 

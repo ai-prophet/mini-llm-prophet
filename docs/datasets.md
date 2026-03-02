@@ -12,11 +12,20 @@
 
 List datasets from the registry.
 
+Output is one row per dataset name (not one row per version), and includes the
+dataset-level `latest` pointer plus total version count.
+
 ```bash
 prophet datasets list
+prophet datasets list weekly-nba
 prophet datasets list --registry-path ./registry.json
 prophet datasets list --registry-url https://.../registry.json
 ```
+
+- `prophet datasets list` shows one row per dataset, with `Latest` and a compact
+  3-line version preview.
+- `prophet datasets list <dataset-name>` shows the full ordered version list for
+  that dataset.
 
 ## `download`
 
