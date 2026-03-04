@@ -190,16 +190,17 @@ def _interactive_flow(
     prefill_outcomes: str | None,
     prefill_ground_truth: dict[str, int] | None,
 ) -> tuple[str, list[str], dict[str, int] | None]:
-    """Run the interactive TUI flow: manual input or Kalshi ticker."""
+    """Run the interactive TUI flow using manual setup or market services."""
     from miniprophet.cli.components.forecast_setup import prompt_forecast_params
 
     console.print()
     choice = Prompt.ask(
         "  [bold]How would you like to set up the forecast?[/bold]\n"
         "  [cyan]1[/cyan] Manual input\n"
-        "  [cyan]2[/cyan] Kalshi market ticker\n"
+        "  [cyan]2[/cyan] Kalshi ticker (auto-detect event/market)\n"
+        "  [cyan]3[/cyan] Polymarket identifier (auto-detect event/market)\n"
         "  Choose",
-        choices=["1", "2"],
+        choices=["1", "2", "3"],
         default="1",
     )
 
@@ -209,6 +210,8 @@ def _interactive_flow(
 
     if choice == "2":
         prefill_title, prefill_outcomes_list, prefill_ground_truth = _fetch_kalshi()
+    elif choice == "3":
+        prefill_title, prefill_outcomes_list, prefill_ground_truth = _fetch_polymarket()
 
     return prompt_forecast_params(
         prefill_title=prefill_title,
@@ -218,25 +221,53 @@ def _interactive_flow(
 
 
 def _fetch_kalshi() -> tuple[str, list[str], dict[str, int] | None]:
-    """Prompt for a Kalshi ticker and fetch market data."""
+    """Prompt for a Kalshi ticker and auto-detect event vs market."""
     from miniprophet.run.services import get_market_service
 
-    ticker = Prompt.ask("  [bold]Kalshi ticker[/bold]").strip()
+    ticker = Prompt.ask("  [bold]Kalshi ticker (event or market)[/bold]").strip()
     if not ticker:
         console.print("  [red]No ticker provided.[/red]")
         return "", [], None
 
     try:
         service = get_market_service("kalshi")
-        data = service.fetch(ticker)
+        data = service.fetch(ticker, ticker_type="auto")
     except Exception as exc:
         console.print(f"  [bold red]Failed to fetch market:[/bold red] {exc}")
         return "", [], None
 
-    console.print(f"  [green]Fetched:[/green] {data.title}")
+    entity = data.metadata.get("entity", "market")
+    console.print(f"  [green]Fetched Kalshi {entity}:[/green] {data.title}")
     if data.metadata.get("last_price"):
         console.print(
             f"  [dim]Last price: {data.metadata['last_price']}  Volume: {data.metadata.get('volume', '?')}[/dim]"
+        )
+
+    return data.title, data.outcomes, data.ground_truth
+
+
+def _fetch_polymarket() -> tuple[str, list[str], dict[str, int] | None]:
+    """Prompt for a Polymarket identifier and auto-detect event vs market."""
+    from miniprophet.run.services import get_market_service
+
+    identifier = Prompt.ask("  [bold]Polymarket identifier (id or slug)[/bold]").strip()
+    if not identifier:
+        console.print("  [red]No identifier provided.[/red]")
+        return "", [], None
+
+    try:
+        service = get_market_service("polymarket")
+        data = service.fetch(identifier, entity="auto", identifier_type="auto")
+    except Exception as exc:
+        console.print(f"  [bold red]Failed to fetch market:[/bold red] {exc}")
+        return "", [], None
+
+    entity = data.metadata.get("entity", "market")
+    console.print(f"  [green]Fetched Polymarket {entity}:[/green] {data.title}")
+    if data.metadata.get("last_price") != "":
+        console.print(
+            f"  [dim]Last price: {data.metadata.get('last_price', '?')}  "
+            f"Volume: {data.metadata.get('volume', '?')}[/dim]"
         )
 
     return data.title, data.outcomes, data.ground_truth

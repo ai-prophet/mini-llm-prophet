@@ -20,11 +20,12 @@ class MarketData:
 class MarketService(Protocol):
     """Protocol for prediction market data fetchers."""
 
-    def fetch(self, ticker: str) -> MarketData: ...
+    def fetch(self, identifier: str, **kwargs) -> MarketData: ...
 
 
 _SERVICE_MAPPING: dict[str, str] = {
     "kalshi": "miniprophet.run.services.kalshi.KalshiService",
+    "polymarket": "miniprophet.run.services.polymarket.PolymarketService",
 }
 
 
