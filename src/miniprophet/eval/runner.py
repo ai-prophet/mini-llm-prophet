@@ -184,6 +184,8 @@ async def process_problem(
             registry=registry,
             search_limit=agent_search_limit,
             search_results_limit=search_cfg.get("search_results_limit", 5),
+            model_config=args.config.get("model", {}),
+            subagents_config=agent_cfg.get("subagents", {}),
         )
         env = ForecastEnvironment(tools, registry=registry)
 

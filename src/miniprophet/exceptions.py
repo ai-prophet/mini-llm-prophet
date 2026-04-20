@@ -28,6 +28,23 @@ class PlanSubmitted(InterruptAgentFlow):
         super().__init__(*messages)
 
 
+class SummarySubmitted(InterruptAgentFlow):
+    """Raised when a SourceReadingAgent submits its summary."""
+
+    def __init__(self, summary: str, *messages: dict):
+        self.summary = summary
+        super().__init__(*messages)
+
+
+class SubproblemSubmitted(InterruptAgentFlow):
+    """Raised when a SubproblemAgent submits its probability + report."""
+
+    def __init__(self, probability: float, report: str, *messages: dict):
+        self.probability = probability
+        self.report = report
+        super().__init__(*messages)
+
+
 class LimitsExceeded(InterruptAgentFlow):
     """Raised when step, cost, or search limits are exceeded."""
 

@@ -199,6 +199,8 @@ class ForecastApp(App):
             registry=registry,
             search_limit=agent_search_limit,
             search_results_limit=search_cfg.get("search_results_limit", 5),
+            model_config=self._config.get("model", {}),
+            subagents_config=self._config.get("agent", {}).get("subagents", {}),
         )
 
         # AskUser callback: posts question, waits for user input via queue

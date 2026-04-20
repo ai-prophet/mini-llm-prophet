@@ -79,12 +79,53 @@ class CliForecastAgent(DefaultForecastAgent):
     def on_observation(self, action: dict, output: dict) -> None:
         tool_name = action.get("name", "")
 
+        # Spawner tools (read_source, investigate_subproblem) return a
+        # rendered subagent trace in the output dict. Render it specially.
+        if tool_name in ("read_source", "investigate_subproblem"):
+            self._display_subagent_observation(action, output)
+            return
+
         tool = self.env._tools.get(tool_name)
         if tool is not None:
             tool.display(output)
             return
 
         print_observation(output)
+
+    def _display_subagent_observation(self, action: dict, output: dict) -> None:
+        """Render a subagent spawner result: compact header + optional trace panel."""
+        from rich import box
+        from rich.panel import Panel
+
+        tool_name = action.get("name", "")
+        trace = output.get("rendered_trace", "") or ""
+        summary = output.get("output", "") or ""
+        n_steps = output.get("n_steps", 0) or 0
+        cost = (output.get("model_cost", 0.0) or 0.0) + (output.get("search_cost", 0.0) or 0.0)
+        error = output.get("error", False)
+
+        if error:
+            console.rule(f"[red]↳ {tool_name} failed[/red]", style="red", align="left")
+            print_observation(output)
+            return
+
+        title = f"{tool_name} completed ({n_steps} steps, ${cost:.4f})"
+        console.rule(f"[cyan]↳ {title}[/cyan]", style="cyan", align="left")
+
+        show_trace = getattr(self.config, "show_subagent_trace", True)
+        if show_trace and trace.strip():
+            console.print(
+                Panel(
+                    trace.rstrip(),
+                    title=f"[dim]Subagent trace: {tool_name}[/dim]",
+                    border_style="dim cyan",
+                    box=box.ROUNDED,
+                    expand=False,
+                )
+            )
+
+        # Main agent sees the summary as an observation
+        print_observation({"output": summary})
 
     def on_run_end(self, result: ForecastResult) -> None:
         # plot a vertical line showing "Agent Submitted"

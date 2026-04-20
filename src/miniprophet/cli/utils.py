@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextvars
+from typing import Any
+
 from rich.console import Console
 
 
@@ -43,9 +46,19 @@ class ConsoleProxy:
 
 _console: ConsoleProxy | None = None
 
+# Task-local console override: when set, get_console() returns this instead of
+# the global proxy. Used by subagents to capture their output into a buffered
+# Rich Console while running concurrently via asyncio.gather.
+_console_override: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "console_override", default=None
+)
 
-def get_console() -> ConsoleProxy:
-    """Return the shared console singleton (a proxy with a swappable target)."""
+
+def get_console():
+    """Return the task-local console override if set, else the shared proxy."""
+    override = _console_override.get()
+    if override is not None:
+        return override
     global _console
     if _console is None:
         _console = ConsoleProxy()
@@ -54,8 +67,26 @@ def get_console() -> ConsoleProxy:
 
 def set_console_target(target) -> None:
     """Swap the inner target of the global console proxy."""
-    proxy = get_console()
+    proxy = _get_proxy()
     object.__setattr__(proxy, "_target", target)
+
+
+def _get_proxy() -> ConsoleProxy:
+    """Return the underlying proxy, bypassing the task-local override."""
+    global _console
+    if _console is None:
+        _console = ConsoleProxy()
+    return _console
+
+
+def set_console_override(console) -> contextvars.Token:
+    """Set a task-local console override.  Returns a token to reset later."""
+    return _console_override.set(console)
+
+
+def reset_console_override(token: contextvars.Token) -> None:
+    """Restore the previous task-local console override."""
+    _console_override.reset(token)
 
 
 def format_token_count(n: int) -> str:

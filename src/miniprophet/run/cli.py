@@ -214,6 +214,8 @@ def _run_legacy(
             registry=registry,
             search_limit=agent_search_limit,
             search_results_limit=search_cfg.get("search_results_limit", 5),
+            model_config=config.get("model", {}),
+            subagents_config=config.get("agent", {}).get("subagents", {}),
         )
         planning_tools = create_planning_tools(ask_user_callback=cli_ask_user)
         env = ForecastEnvironment(tools, planning_tools=planning_tools, registry=registry)

@@ -19,28 +19,137 @@ def create_default_tools(
     *,
     search_limit: int = 10,
     search_results_limit: int = 5,
+    model_config: dict | None = None,
+    subagents_config: dict | None = None,
 ) -> list[Tool]:
-    """Build the standard set of forecast tools sharing a common SourceRegistry."""
+    """Build the main agent's execution tool set.
+
+    Parameters
+    ----------
+    search_tool, registry, search_limit, search_results_limit
+        Shared across main agent and subagents.
+    model_config
+        The main agent's model config (model_class, model_name, kwargs).
+        Required to spawn subagents.  If ``None``, the ``read_source`` and
+        ``investigate_subproblem`` spawner tools are omitted from the
+        returned tool set.
+    subagents_config
+        The ``agent.subagents`` dict from the YAML config.  Controls per-
+        subagent step/cost/search limits and model overrides.
+
+    The main agent does NOT have direct ``retrieve_source`` access — it
+    calls the spawner ``read_source`` which delegates to a SourceReadingAgent.
+    """
     from miniprophet.tools.list_sources_tool import ListSourcesTool
-    from miniprophet.tools.read_source_tool import ReadSourceTool
     from miniprophet.tools.search_tool import SearchForecastTool, SearchToolConfig
     from miniprophet.tools.submit import SubmitTool
 
-    search_config = SearchToolConfig(
-        search_results_limit=search_results_limit,
+    main_search = SearchForecastTool(
+        search_backend=search_tool,
+        registry=registry,
+        search_limit=search_limit,
+        config=SearchToolConfig(search_results_limit=search_results_limit),
     )
 
-    return [
-        SearchForecastTool(
+    main_tools: list[Tool] = [
+        main_search,
+        ListSourcesTool(registry=registry),
+    ]
+
+    # Add subagent spawners when model_config is provided.
+    if model_config is not None:
+        spawners = _build_subagent_spawners(
+            search_tool=search_tool,
+            registry=registry,
+            search_results_limit=search_results_limit,
+            model_config=model_config,
+            subagents_config=subagents_config or {},
+        )
+        main_tools.extend(spawners)
+
+    main_tools.append(SubmitTool(registry=registry))
+    return main_tools
+
+
+def _build_subagent_spawners(
+    *,
+    search_tool: SearchBackend,
+    registry: SourceRegistry,
+    search_results_limit: int,
+    model_config: dict,
+    subagents_config: dict,
+) -> list[Tool]:
+    """Build the ReadSourceTool and InvestigateSubproblemTool spawner tools."""
+    from miniprophet.models import get_model
+    from miniprophet.subagents.base import SubagentConfig
+    from miniprophet.subagents.source_reading import SourceReadingAgent
+    from miniprophet.subagents.subproblem import (
+        SubproblemAgent,
+        SubproblemSubagentConfig,
+    )
+    from miniprophet.tools.investigate_subproblem import InvestigateSubproblemTool
+    from miniprophet.tools.read_source import ReadSourceTool
+    from miniprophet.tools.retrieve_source import RetrieveSourceTool
+    from miniprophet.tools.search_tool import SearchForecastTool, SearchToolConfig
+    from miniprophet.tools.submit_subproblem import SubmitSubproblemTool
+    from miniprophet.tools.submit_summary import SubmitSummaryTool
+    from miniprophet.utils.serialize import recursive_merge
+
+    sr_config = SubagentConfig(**(subagents_config.get("source_reading") or {}))
+    sp_config = SubproblemSubagentConfig(**(subagents_config.get("subproblem") or {}))
+
+    def _merge_model(override: dict | None) -> dict:
+        if not override:
+            return dict(model_config)
+        return recursive_merge(dict(model_config), override)
+
+    def _wrap_list_sources():
+        # Local import to avoid top-level cycle
+        from miniprophet.tools.list_sources_tool import ListSourcesTool
+
+        return ListSourcesTool(registry=registry)
+
+    def source_reading_factory():
+        model_cfg = _merge_model(sr_config.model)
+        env = ForecastEnvironment(
+            tools=[RetrieveSourceTool(registry=registry), SubmitSummaryTool()],
+            registry=registry,
+        )
+        return SourceReadingAgent(
+            model=get_model(config=model_cfg),
+            env=env,
+            config=sr_config,
+        )
+
+    def subproblem_factory():
+        model_cfg = _merge_model(sp_config.model)
+        sp_search = SearchForecastTool(
             search_backend=search_tool,
             registry=registry,
-            search_limit=search_limit,
-            config=search_config,
-        ),
-        ReadSourceTool(registry=registry),
-        ListSourcesTool(registry=registry),
-        SubmitTool(registry=registry),
-    ]
+            search_limit=sp_config.search_limit,
+            config=SearchToolConfig(search_results_limit=search_results_limit),
+        )
+        env = ForecastEnvironment(
+            tools=[
+                sp_search,
+                _wrap_list_sources(),
+                RetrieveSourceTool(registry=registry),
+                SubmitSubproblemTool(),
+            ],
+            registry=registry,
+        )
+        return SubproblemAgent(
+            model=get_model(config=model_cfg),
+            env=env,
+            config=sp_config,
+        )
+
+    spawners: list[Tool] = []
+    if sr_config.enabled:
+        spawners.append(ReadSourceTool(subagent_factory=source_reading_factory))
+    if sp_config.enabled:
+        spawners.append(InvestigateSubproblemTool(subagent_factory=subproblem_factory))
+    return spawners
 
 
 def create_planning_tools(

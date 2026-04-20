@@ -39,6 +39,25 @@ class PlanningConfig(BaseModel):
     cost_limit: float = 0.5
 
 
+class SubagentTypeConfig(BaseModel):
+    """Per-subagent-type section inside agent.subagents."""
+
+    enabled: bool = True
+    step_limit: int = 5
+    cost_limit: float = 0.1
+    system_template: str = ""
+    model: dict | None = None
+
+
+class SubproblemTypeConfig(SubagentTypeConfig):
+    search_limit: int = 3
+
+
+class SubagentsConfig(BaseModel):
+    source_reading: SubagentTypeConfig = SubagentTypeConfig()
+    subproblem: SubproblemTypeConfig = SubproblemTypeConfig()
+
+
 class AgentConfig(BaseModel):
     system_template: str
     instance_template: str
@@ -51,6 +70,8 @@ class AgentConfig(BaseModel):
     grace_period_prompt: str = ""
     grace_period_extra_turns: int = 3
     planning: PlanningConfig = PlanningConfig()
+    subagents: SubagentsConfig = SubagentsConfig()
+    show_subagent_trace: bool = True
 
 
 class DefaultForecastAgent:
@@ -441,21 +462,34 @@ class DefaultForecastAgent:
     async def execute_actions(self, message: dict) -> list[dict]:
         actions = message.get("extra", {}).get("actions", [])
         outputs: list[dict] = []
-        for action in actions:
-            if self._in_grace_period and action.get("name") != "submit":
-                outputs.append(
-                    {
-                        "output": self.config.grace_period_prompt,
-                        "error": True,
-                    }
+
+        if self._in_grace_period:
+            # Sequential: filter out non-submit actions with an error
+            for action in actions:
+                if action.get("name") != "submit":
+                    outputs.append({"output": self.config.grace_period_prompt, "error": True})
+                else:
+                    outputs.append(await self.env.execute(action, **self.runtime_kwargs))
+        elif actions:
+            # Parallel: concurrent tool dispatch via asyncio.gather.
+            # This lets the main agent emit multiple tool calls in one step
+            # (e.g. several read_source / investigate_subproblem calls) and
+            # have them execute in parallel.
+            outputs = list(
+                await asyncio.gather(
+                    *[self.env.execute(action, **self.runtime_kwargs) for action in actions]
                 )
-            else:
-                outputs.append(await self.env.execute(action, **self.runtime_kwargs))
+            )
+
         for action, output in zip(actions, outputs):
-            sc = output.get("search_cost", 0.0)
+            sc = output.get("search_cost", 0.0) or 0.0
             if sc:
                 self.search_cost += sc
                 self.n_searches += 1
+            mc = output.get("model_cost", 0.0) or 0.0
+            if mc:
+                # Aggregate subagent model costs into main totals
+                self.model_cost += mc
             self.on_observation(action, output)
         return self.add_messages(*self.model.format_observation_messages(message, outputs))
 

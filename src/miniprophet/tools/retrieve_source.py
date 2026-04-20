@@ -1,16 +1,21 @@
-"""ReadSourceTool: read full content of a source by ID."""
+"""RetrieveSourceTool: direct registry read of a source by ID.
+
+This is the low-level tool exposed to subagents (SourceReadingAgent,
+SubproblemAgent).  The main agent does NOT have this tool — it must go
+through the ``read_source`` spawner which delegates to a SourceReadingAgent.
+"""
 
 from __future__ import annotations
 
 from miniprophet.environment.source_registry import SourceRegistry
 
-READ_SOURCE_SCHEMA = {
+RETRIEVE_SOURCE_SCHEMA = {
     "type": "function",
     "function": {
-        "name": "read_source",
+        "name": "retrieve_source",
         "description": (
-            "Read the full content of a previously discovered source by its ID. "
-            "Use this to get detailed information from a source."
+            "Retrieve the full content of a previously discovered source by its ID. "
+            "Use this to get the complete text of a source for detailed analysis."
         ),
         "parameters": {
             "type": "object",
@@ -26,18 +31,18 @@ READ_SOURCE_SCHEMA = {
 }
 
 
-class ReadSourceTool:
-    """Read the full content of a source by its ID."""
+class RetrieveSourceTool:
+    """Direct registry read of a source's full content by ID (subagent-only)."""
 
     def __init__(self, registry: SourceRegistry) -> None:
         self._registry = registry
 
     @property
     def name(self) -> str:
-        return "read_source"
+        return "retrieve_source"
 
     def get_schema(self) -> dict:
-        return READ_SOURCE_SCHEMA
+        return RETRIEVE_SOURCE_SCHEMA
 
     async def execute(self, args: dict) -> dict:
         source_id = args.get("source_id", "")

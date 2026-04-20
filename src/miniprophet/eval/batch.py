@@ -120,6 +120,8 @@ async def _process_problem(
             registry=registry,
             search_limit=agent_search_limit,
             search_results_limit=search_cfg.get("search_results_limit", 5),
+            model_config=config.get("model", {}),
+            subagents_config=agent_cfg.get("subagents", {}),
         )
         planning_tools = create_planning_tools()
         env = ForecastEnvironment(tools, planning_tools=planning_tools, registry=registry)

@@ -106,6 +106,8 @@ def predict(event: dict) -> dict:
         registry=registry,
         search_limit=int(agent_cfg.get("search_limit", 8) or 8),
         search_results_limit=int(search_cfg.get("search_results_limit", 5) or 5),
+        model_config=config.get("model", {}),
+        subagents_config=agent_cfg.get("subagents", {}),
     )
     planning_tools = create_planning_tools()
     env = ForecastEnvironment(tools, planning_tools=planning_tools, registry=registry)
