@@ -21,6 +21,7 @@ def create_default_tools(
     search_results_limit: int = 5,
     model_config: dict | None = None,
     subagents_config: dict | None = None,
+    subagent_display_context: Any = None,
 ) -> list[Tool]:
     """Build the main agent's execution tool set.
 
@@ -36,6 +37,11 @@ def create_default_tools(
     subagents_config
         The ``agent.subagents`` dict from the YAML config.  Controls per-
         subagent step/cost/search limits and model overrides.
+    subagent_display_context
+        Optional callable ``(SubagentStatus) -> ContextManager`` used to
+        render live progress during a subagent run.  CLI callers should
+        pass :func:`miniprophet.cli.components.subagent.subagent_live_display`.
+        Batch/eval/non-interactive callers leave this as ``None`` (silent).
 
     The main agent does NOT have direct ``retrieve_source`` access — it
     calls the spawner ``read_source`` which delegates to a SourceReadingAgent.
@@ -64,6 +70,7 @@ def create_default_tools(
             search_results_limit=search_results_limit,
             model_config=model_config,
             subagents_config=subagents_config or {},
+            subagent_display_context=subagent_display_context,
         )
         main_tools.extend(spawners)
 
@@ -78,6 +85,7 @@ def _build_subagent_spawners(
     search_results_limit: int,
     model_config: dict,
     subagents_config: dict,
+    subagent_display_context: Any = None,
 ) -> list[Tool]:
     """Build the ReadSourceTool and InvestigateSubproblemTool spawner tools."""
     from miniprophet.models import get_model
@@ -146,9 +154,19 @@ def _build_subagent_spawners(
 
     spawners: list[Tool] = []
     if sr_config.enabled:
-        spawners.append(ReadSourceTool(subagent_factory=source_reading_factory))
+        spawners.append(
+            ReadSourceTool(
+                subagent_factory=source_reading_factory,
+                display_context=subagent_display_context,
+            )
+        )
     if sp_config.enabled:
-        spawners.append(InvestigateSubproblemTool(subagent_factory=subproblem_factory))
+        spawners.append(
+            InvestigateSubproblemTool(
+                subagent_factory=subproblem_factory,
+                display_context=subagent_display_context,
+            )
+        )
     return spawners
 
 

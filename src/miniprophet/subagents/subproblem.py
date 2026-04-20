@@ -20,7 +20,9 @@ class SubproblemResult:
     model_cost: float
     search_cost: float
     n_steps: int
-    rendered_trace: str
+    n_tool_calls: int
+    prompt_tokens: int
+    completion_tokens: int
     exit_status: str = "subproblem_submitted"
 
 
@@ -30,6 +32,18 @@ class SubproblemAgent(SubagentBase):
     Tools: ``search``, ``list_sources``, ``retrieve_source``, ``submit_subproblem``.
     Runs a full search-and-read agent loop, typically 5-10 steps.
     """
+
+    kind = "subproblem"
+
+    def _status_label(
+        self,
+        title: str = "",
+        context: str = "",
+        source_ids: list[str] | None = None,
+        **_,
+    ) -> str:
+        short = title if len(title) <= 60 else title[:57] + "..."
+        return short
 
     def _instance_prompt(
         self,
@@ -59,7 +73,7 @@ class SubproblemAgent(SubagentBase):
             "forecasting question."
         )
 
-    def _build_result(self, rendered_trace: str) -> SubproblemResult:
+    def _build_result(self) -> SubproblemResult:
         last_extra = self.messages[-1].get("extra", {}) if self.messages else {}
         return SubproblemResult(
             probability=float(last_extra.get("probability", 0.0) or 0.0),
@@ -68,6 +82,8 @@ class SubproblemAgent(SubagentBase):
             model_cost=self.model_cost,
             search_cost=self.search_cost,
             n_steps=self.n_calls,
-            rendered_trace=rendered_trace,
+            n_tool_calls=self.n_tool_calls,
+            prompt_tokens=self.prompt_tokens,
+            completion_tokens=self.completion_tokens,
             exit_status=last_extra.get("exit_status", "unknown"),
         )

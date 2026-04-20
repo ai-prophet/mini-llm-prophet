@@ -4,11 +4,16 @@ The main agent cannot read raw sources directly — it calls this tool, which
 delegates to a SourceReadingAgent.  The subagent reads the full content
 and returns a focused summary.  The main agent's context only sees the
 summary, not the raw source text.
+
+This module is display-agnostic.  Callers (CLI, batch, etc.) inject a
+``display_context`` callable for live progress rendering; the default is a
+silent :class:`contextlib.nullcontext`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import nullcontext
 
 READ_SOURCE_SCHEMA = {
     "type": "function",
@@ -41,10 +46,27 @@ READ_SOURCE_SCHEMA = {
 
 
 class ReadSourceTool:
-    """Spawns a SourceReadingAgent; returns its summary as the tool output."""
+    """Spawns a SourceReadingAgent; returns its summary as the tool output.
 
-    def __init__(self, *, subagent_factory: Callable) -> None:
+    Parameters
+    ----------
+    subagent_factory
+        Zero-arg callable that produces a fresh ``SourceReadingAgent``.
+    display_context
+        Optional callable ``(SubagentStatus) -> ContextManager``.  The
+        context wraps the subagent's ``run()`` so UI layers can render
+        live progress.  When ``None``, a silent ``nullcontext`` is used
+        (appropriate for batch/eval/non-interactive contexts).
+    """
+
+    def __init__(
+        self,
+        *,
+        subagent_factory: Callable,
+        display_context: Callable | None = None,
+    ) -> None:
         self._factory = subagent_factory
+        self._display_context = display_context or (lambda _status: nullcontext())
 
     @property
     def name(self) -> str:
@@ -62,7 +84,8 @@ class ReadSourceTool:
 
         subagent = self._factory()
         try:
-            result = await subagent.run(source_id=source_id, focus=focus)
+            with self._display_context(subagent.status):
+                result = await subagent.run(source_id=source_id, focus=focus)
         except Exception as exc:
             return {"output": f"Subagent error: {exc}", "error": True}
 
@@ -71,13 +94,17 @@ class ReadSourceTool:
             "model_cost": result.model_cost,
             "search_cost": result.search_cost,
             "n_steps": result.n_steps,
-            "rendered_trace": result.rendered_trace,
+            "n_tool_calls": result.n_tool_calls,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "exit_status": result.exit_status,
             "subagent_kind": "source_reading",
+            "subagent_label": f"{source_id}, focus={focus}" if focus else source_id,
         }
 
     def display(self, output: dict) -> None:
-        # Main agent's hook renders spawner tool outputs specially; this is a
-        # fallback for generic observation rendering.
+        # Fallback display when the calling agent doesn't handle subagent
+        # observations specially (non-CLI contexts).
         from miniprophet.cli.components.observation import print_observation
 
         print_observation({"output": output.get("output", "")})

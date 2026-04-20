@@ -1,8 +1,14 @@
-"""InvestigateSubproblemTool: main agent tool that spawns a SubproblemAgent."""
+"""InvestigateSubproblemTool: main agent tool that spawns a SubproblemAgent.
+
+This module is display-agnostic.  Callers (CLI, batch, etc.) inject a
+``display_context`` callable for live progress rendering; the default is
+a silent :class:`contextlib.nullcontext`.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import nullcontext
 
 INVESTIGATE_SUBPROBLEM_SCHEMA = {
     "type": "function",
@@ -48,10 +54,21 @@ INVESTIGATE_SUBPROBLEM_SCHEMA = {
 
 
 class InvestigateSubproblemTool:
-    """Spawns a SubproblemAgent; returns its probability + report."""
+    """Spawns a SubproblemAgent; returns its probability + report.
 
-    def __init__(self, *, subagent_factory: Callable) -> None:
+    Parameters mirror :class:`ReadSourceTool`: ``subagent_factory`` builds the
+    subagent, ``display_context`` optionally wraps the subagent run for live
+    UI rendering.
+    """
+
+    def __init__(
+        self,
+        *,
+        subagent_factory: Callable,
+        display_context: Callable | None = None,
+    ) -> None:
         self._factory = subagent_factory
+        self._display_context = display_context or (lambda _status: nullcontext())
 
     @property
     def name(self) -> str:
@@ -75,7 +92,8 @@ class InvestigateSubproblemTool:
 
         subagent = self._factory()
         try:
-            result = await subagent.run(title=title, context=context, source_ids=source_ids)
+            with self._display_context(subagent.status):
+                result = await subagent.run(title=title, context=context, source_ids=source_ids)
         except Exception as exc:
             return {"output": f"Subagent error: {exc}", "error": True}
 
@@ -92,8 +110,12 @@ class InvestigateSubproblemTool:
             "model_cost": result.model_cost,
             "search_cost": result.search_cost,
             "n_steps": result.n_steps,
-            "rendered_trace": result.rendered_trace,
+            "n_tool_calls": result.n_tool_calls,
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "exit_status": result.exit_status,
             "subagent_kind": "subproblem",
+            "subagent_label": title[:60] + ("..." if len(title) > 60 else ""),
             "probability": result.probability,
             "report": result.report,
         }

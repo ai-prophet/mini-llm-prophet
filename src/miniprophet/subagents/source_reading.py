@@ -13,7 +13,9 @@ class SourceReadingResult:
     model_cost: float
     search_cost: float
     n_steps: int
-    rendered_trace: str
+    n_tool_calls: int
+    prompt_tokens: int
+    completion_tokens: int
     exit_status: str = "summary_submitted"
 
 
@@ -23,6 +25,15 @@ class SourceReadingAgent(SubagentBase):
     Tools: ``retrieve_source``, ``submit_summary``.  Typical flow is 2
     model calls: retrieve the full content, then submit a summary.
     """
+
+    kind = "source_reading"
+
+    def _status_label(self, source_id: str = "", focus: str = "", **_) -> str:
+        label = source_id
+        if focus:
+            focus_short = focus if len(focus) <= 40 else focus[:37] + "..."
+            label = f"{source_id}, focus={focus_short}"
+        return label
 
     def _instance_prompt(self, source_id: str, focus: str = "", **_) -> str:
         base = f"Read source {source_id}"
@@ -37,7 +48,7 @@ class SourceReadingAgent(SubagentBase):
             "Do NOT speculate beyond what the source says."
         )
 
-    def _build_result(self, rendered_trace: str) -> SourceReadingResult:
+    def _build_result(self) -> SourceReadingResult:
         last_extra = self.messages[-1].get("extra", {}) if self.messages else {}
         return SourceReadingResult(
             summary=last_extra.get("summary", "")
@@ -45,6 +56,8 @@ class SourceReadingAgent(SubagentBase):
             model_cost=self.model_cost,
             search_cost=self.search_cost,
             n_steps=self.n_calls,
-            rendered_trace=rendered_trace,
+            n_tool_calls=self.n_tool_calls,
+            prompt_tokens=self.prompt_tokens,
+            completion_tokens=self.completion_tokens,
             exit_status=last_extra.get("exit_status", "unknown"),
         )

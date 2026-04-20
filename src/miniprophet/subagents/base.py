@@ -5,10 +5,10 @@ investigate_subproblem).  Each subagent:
 
 - has its own Model, ForecastEnvironment (with a restricted tool set), and
   message history
-- runs in a ``contextvars``-scoped buffered Rich Console so concurrent
-  subagents don't interleave their output
 - enforces its own per-invocation step and cost limits
 - has no planning phase and no grace period (simpler than DefaultForecastAgent)
+- does NOT print panels inline — it exposes a live :class:`SubagentStatus`
+  object that the spawner tool renders in a Rich ``Live`` display
 
 Subagents do NOT spawn further subagents: their environment has no spawner
 tools.  The invariant is enforced at the environment level via the tool set.
@@ -17,16 +17,14 @@ tools.  The invariant is enforced at the environment level via the tool set.
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 
 from pydantic import BaseModel
-from rich.console import Console
 
 from miniprophet import Environment, Model
 from miniprophet.agent.trajectory import TrajectoryRecorder
-from miniprophet.cli.utils import reset_console_override, set_console_override
 from miniprophet.exceptions import InterruptAgentFlow, LimitsExceeded
+from miniprophet.subagents.status import SubagentStatus
 
 
 class SubagentConfig(BaseModel):
@@ -42,8 +40,15 @@ class SubagentConfig(BaseModel):
 class SubagentBase:
     """Minimal agent loop used by SourceReadingAgent and SubproblemAgent.
 
-    Subclasses implement :meth:`_instance_prompt` and :meth:`_build_result`.
+    Subclasses implement :meth:`_instance_prompt`, :meth:`_build_result`,
+    and override :attr:`kind` / :meth:`_status_label`.
+
+    Subagents do not print directly.  Their :attr:`status` is updated in hooks
+    and read by the spawner tool's Rich Live display.
     """
+
+    # Subclass override
+    kind: str = "subagent"
 
     def __init__(
         self,
@@ -58,10 +63,22 @@ class SubagentBase:
         self.logger = logging.getLogger(f"miniprophet.subagents.{self.__class__.__name__}")
         self.messages: list[dict] = []
         self.n_calls = 0
+        self.n_tool_calls = 0
         self.model_cost = 0.0
         self.search_cost = 0.0
         self.n_searches = 0
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
         self._trajectory = TrajectoryRecorder()
+        self._status = SubagentStatus(
+            kind=self.kind,
+            step_limit=config.step_limit,
+        )
+
+    @property
+    def status(self) -> SubagentStatus:
+        """Live-updating status object.  Spawner tools read this via a Rich Live."""
+        return self._status
 
     # ------------------------------------------------------------------
     # Template rendering
@@ -74,7 +91,11 @@ class SubagentBase:
     def _instance_prompt(self, **render_vars) -> str:
         raise NotImplementedError
 
-    def _build_result(self, rendered_trace: str):
+    def _status_label(self, **render_vars) -> str:
+        """Brief label shown in the live status, e.g. 'S4, focus=injury'."""
+        return ""
+
+    def _build_result(self):
         raise NotImplementedError
 
     # ------------------------------------------------------------------
@@ -82,59 +103,46 @@ class SubagentBase:
     # ------------------------------------------------------------------
 
     async def run(self, **render_vars):
-        """Run the subagent to completion and return a structured result.
+        """Run the subagent loop.  Updates :attr:`status` throughout.
 
-        Redirects Rich output into an in-memory buffered Console for the
-        duration of the run (via a task-local ``ContextVar`` override).  The
-        captured text is attached to the result as ``rendered_trace``.
+        Does NOT print inline — the spawner tool is expected to wrap this
+        call in a ``rich.live.Live`` using :class:`SubagentStatusRenderable`.
         """
-        buffer = Console(
-            file=io.StringIO(),
-            force_terminal=True,
-            width=120,
-            record=True,
-        )
-        token = set_console_override(buffer)
-        try:
-            system_content = self._render(self.config.system_template, **render_vars)
-            user_content = self._instance_prompt(**render_vars)
+        self._status.label = self._status_label(**render_vars)
+        self._status.state = "starting"
 
-            self.messages = [
-                self.model.format_message(role="system", content=system_content),
-                self.model.format_message(role="user", content=user_content),
-            ]
-            self.on_run_start(**render_vars)
+        system_content = self._render(self.config.system_template, **render_vars)
+        user_content = self._instance_prompt(**render_vars)
 
-            while True:
-                try:
-                    await self._step()
-                except LimitsExceeded as exc:
-                    self.messages.extend(exc.messages)
-                    break
-                except InterruptAgentFlow as exc:
-                    self.messages.extend(exc.messages)
-                except Exception as exc:  # uncaught
-                    self.logger.exception("Subagent uncaught exception: %s", exc)
-                    self.messages.append(
-                        self.model.format_message(
-                            role="exit",
-                            content=str(exc),
-                            extra={"exit_status": type(exc).__name__},
-                        )
+        self.messages = [
+            self.model.format_message(role="system", content=system_content),
+            self.model.format_message(role="user", content=user_content),
+        ]
+
+        while True:
+            try:
+                await self._step()
+            except LimitsExceeded as exc:
+                self.messages.extend(exc.messages)
+                break
+            except InterruptAgentFlow as exc:
+                self.messages.extend(exc.messages)
+            except Exception as exc:  # uncaught
+                self.logger.exception("Subagent uncaught exception: %s", exc)
+                self.messages.append(
+                    self.model.format_message(
+                        role="exit",
+                        content=str(exc),
+                        extra={"exit_status": type(exc).__name__},
                     )
-                    break
+                )
+                break
 
-                if self.messages and self.messages[-1].get("role") == "exit":
-                    break
-        finally:
-            reset_console_override(token)
+            if self.messages and self.messages[-1].get("role") == "exit":
+                break
 
-        try:
-            rendered = buffer.export_text(clear=False)
-        except Exception:
-            rendered = buffer.file.getvalue() if hasattr(buffer.file, "getvalue") else ""
-
-        return self._build_result(rendered)
+        self._status.state = "done"
+        return self._build_result()
 
     # ------------------------------------------------------------------
     # Loop internals
@@ -163,16 +171,38 @@ class SubagentBase:
             )
 
         self.n_calls += 1
+        self._status.state = "thinking"
+        self._status.step = self.n_calls
+
         input_snapshot = list(self.messages)
         tools = self.env.get_tool_schemas()
         message = await self.model.query(self.messages, tools)
         extra = message.get("extra", {})
+
+        # Cost + token tracking
         self.model_cost += extra.get("cost", 0.0) or 0.0
+        call_prompt = extra.get("prompt_tokens", 0) or 0
+        call_completion = extra.get("completion_tokens", 0) or 0
+        self.prompt_tokens += call_prompt
+        self.completion_tokens += call_completion
+
         self.messages.append(message)
         self._trajectory.record_step(input_snapshot, message)
 
-        self.on_step_start()
-        self.on_model_response(message)
+        # Sync status
+        self._status.model_cost = self.model_cost
+        self._status.search_cost = self.search_cost
+        self._status.prompt_tokens = self.prompt_tokens
+        self._status.completion_tokens = self.completion_tokens
+
+        # Announce what the model wants to do next
+        actions = extra.get("actions", [])
+        if actions:
+            names = ", ".join(a.get("name", "?") for a in actions)
+            self._status.state = f"calling: {names}"
+        else:
+            self._status.state = "responding (no tool call)"
+
         return message
 
     async def _execute_actions(self, message: dict) -> None:
@@ -180,46 +210,21 @@ class SubagentBase:
         if not actions:
             return
 
-        # Parallel execution (subagent tools are short and not nested)
+        # Count tool calls eagerly: even a call that raises (like
+        # submit_summary) is a tool call the model made.
+        self.n_tool_calls += len(actions)
+        self._status.n_tool_calls = self.n_tool_calls
+
+        # Parallel within a subagent (subagent tools are short and not nested)
         outputs = await asyncio.gather(*[self.env.execute(a) for a in actions])
 
-        for action, output in zip(actions, outputs):
+        for _action, output in zip(actions, outputs):
             sc = output.get("search_cost", 0.0) or 0.0
             if sc:
                 self.search_cost += sc
                 self.n_searches += 1
-            self.on_observation(action, output)
+
+        # Sync status (search_cost may have changed)
+        self._status.search_cost = self.search_cost
 
         self.messages.extend(self.model.format_observation_messages(message, outputs))
-
-    # ------------------------------------------------------------------
-    # Display hooks (default: delegate to tool.display for observations)
-    # ------------------------------------------------------------------
-
-    def on_run_start(self, **render_vars) -> None:
-        pass
-
-    def on_step_start(self) -> None:
-        from miniprophet.cli.components.step_display import print_step_header
-
-        print_step_header(
-            self.n_calls,
-            self.model_cost,
-            self.search_cost,
-            self.model_cost + self.search_cost,
-        )
-
-    def on_model_response(self, message: dict) -> None:
-        from miniprophet.cli.components.step_display import print_model_response
-
-        print_model_response(message, max_thinking_chars=300)
-
-    def on_observation(self, action: dict, output: dict) -> None:
-        tool_name = action.get("name", "")
-        tool = self.env._tools.get(tool_name)
-        if tool is not None and hasattr(tool, "display"):
-            tool.display(output)
-            return
-        from miniprophet.cli.components.observation import print_observation
-
-        print_observation(output)

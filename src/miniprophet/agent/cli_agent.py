@@ -15,6 +15,7 @@ from miniprophet.cli.components.forecast_results import print_forecast_results, 
 from miniprophet.cli.components.observation import print_observation
 from miniprophet.cli.components.run_header import print_run_footer, print_run_header
 from miniprophet.cli.components.step_display import print_model_response, print_step_header
+from miniprophet.cli.components.subagent import print_subagent_summary
 from miniprophet.cli.utils import get_console
 
 console = get_console()
@@ -93,39 +94,8 @@ class CliForecastAgent(DefaultForecastAgent):
         print_observation(output)
 
     def _display_subagent_observation(self, action: dict, output: dict) -> None:
-        """Render a subagent spawner result: compact header + optional trace panel."""
-        from rich import box
-        from rich.panel import Panel
-
-        tool_name = action.get("name", "")
-        trace = output.get("rendered_trace", "") or ""
-        summary = output.get("output", "") or ""
-        n_steps = output.get("n_steps", 0) or 0
-        cost = (output.get("model_cost", 0.0) or 0.0) + (output.get("search_cost", 0.0) or 0.0)
-        error = output.get("error", False)
-
-        if error:
-            console.rule(f"[red]↳ {tool_name} failed[/red]", style="red", align="left")
-            print_observation(output)
-            return
-
-        title = f"{tool_name} completed ({n_steps} steps, ${cost:.4f})"
-        console.rule(f"[cyan]↳ {title}[/cyan]", style="cyan", align="left")
-
-        show_trace = getattr(self.config, "show_subagent_trace", True)
-        if show_trace and trace.strip():
-            console.print(
-                Panel(
-                    trace.rstrip(),
-                    title=f"[dim]Subagent trace: {tool_name}[/dim]",
-                    border_style="dim cyan",
-                    box=box.ROUNDED,
-                    expand=False,
-                )
-            )
-
-        # Main agent sees the summary as an observation
-        print_observation({"output": summary})
+        """Render a subagent spawner result via the CLI components module."""
+        print_subagent_summary(action, output)
 
     def on_run_end(self, result: ForecastResult) -> None:
         # plot a vertical line showing "Agent Submitted"

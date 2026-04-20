@@ -6,7 +6,7 @@ Provides:
 - Protocol definitions for core components (Model, Environment, Tool)
 """
 
-__version__ = "0.1.10"
+__version__ = "0.2.0"
 
 import os
 from pathlib import Path

@@ -209,6 +209,8 @@ def _run_legacy(
         agent_search_limit = config.get("agent", {}).get("search_limit", 10)
         max_gist = search_cfg.get("max_source_display_chars", 200)
         registry = SourceRegistry(max_gist_chars=max_gist)
+        from miniprophet.cli.components.subagent import subagent_live_display
+
         tools = create_default_tools(
             search_tool=search_backend,
             registry=registry,
@@ -216,6 +218,7 @@ def _run_legacy(
             search_results_limit=search_cfg.get("search_results_limit", 5),
             model_config=config.get("model", {}),
             subagents_config=config.get("agent", {}).get("subagents", {}),
+            subagent_display_context=subagent_live_display,
         )
         planning_tools = create_planning_tools(ask_user_callback=cli_ask_user)
         env = ForecastEnvironment(tools, planning_tools=planning_tools, registry=registry)
