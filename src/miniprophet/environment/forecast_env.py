@@ -6,10 +6,8 @@ import json
 import logging
 from typing import Any
 
-from pydantic import BaseModel
-
 from miniprophet import Tool
-from miniprophet.environment.source_board import Source, SourceBoard
+from miniprophet.environment.source_registry import SourceRegistry
 from miniprophet.tools.search import SearchBackend
 
 logger = logging.getLogger("miniprophet.environment")
@@ -17,56 +15,208 @@ logger = logging.getLogger("miniprophet.environment")
 
 def create_default_tools(
     search_tool: SearchBackend,
-    outcomes: list[str],
-    board: SourceBoard,
+    registry: SourceRegistry,
     *,
     search_limit: int = 10,
     search_results_limit: int = 5,
-    max_source_display_chars: int = 2000,
+    model_config: dict | None = None,
+    subagents_config: dict | None = None,
+    subagent_display_context: Any = None,
 ) -> list[Tool]:
-    """Build the standard set of forecast tools sharing a common board and source registry."""
+    """Build the main agent's execution tool set.
+
+    Parameters
+    ----------
+    search_tool, registry, search_limit, search_results_limit
+        Shared across main agent and subagents.
+    model_config
+        The main agent's model config (model_class, model_name, kwargs).
+        Required to spawn subagents.  If ``None``, the ``read_source`` and
+        ``investigate_subproblem`` spawner tools are omitted from the
+        returned tool set.
+    subagents_config
+        The ``agent.subagents`` dict from the YAML config.  Controls per-
+        subagent step/cost/search limits and model overrides.
+    subagent_display_context
+        Optional callable ``(SubagentStatus) -> ContextManager`` used to
+        render live progress during a subagent run.  CLI callers should
+        pass :func:`miniprophet.cli.components.subagent.subagent_live_display`.
+        Batch/eval/non-interactive callers leave this as ``None`` (silent).
+
+    The main agent does NOT have direct ``retrieve_source`` access — it
+    calls the spawner ``read_source`` which delegates to a SourceReadingAgent.
+    """
+    from miniprophet.tools.list_sources_tool import ListSourcesTool
     from miniprophet.tools.search_tool import SearchForecastTool, SearchToolConfig
-    from miniprophet.tools.source_board_tools import AddSourceTool, EditNoteTool
     from miniprophet.tools.submit import SubmitTool
 
-    source_registry: dict[str, Source] = {}
-    search_config = SearchToolConfig(
-        search_results_limit=search_results_limit,
-        max_source_display_chars=max_source_display_chars,
+    main_search = SearchForecastTool(
+        search_backend=search_tool,
+        registry=registry,
+        search_limit=search_limit,
+        config=SearchToolConfig(search_results_limit=search_results_limit),
     )
 
-    return [
-        SearchForecastTool(
+    main_tools: list[Tool] = [
+        main_search,
+        ListSourcesTool(registry=registry),
+    ]
+
+    # Add subagent spawners when model_config is provided.
+    if model_config is not None:
+        spawners = _build_subagent_spawners(
+            search_tool=search_tool,
+            registry=registry,
+            search_results_limit=search_results_limit,
+            model_config=model_config,
+            subagents_config=subagents_config or {},
+            subagent_display_context=subagent_display_context,
+        )
+        main_tools.extend(spawners)
+
+    main_tools.append(SubmitTool(registry=registry))
+    return main_tools
+
+
+def _build_subagent_spawners(
+    *,
+    search_tool: SearchBackend,
+    registry: SourceRegistry,
+    search_results_limit: int,
+    model_config: dict,
+    subagents_config: dict,
+    subagent_display_context: Any = None,
+) -> list[Tool]:
+    """Build the ReadSourceTool and InvestigateSubproblemTool spawner tools."""
+    from miniprophet.models import get_model
+    from miniprophet.subagents.base import SubagentConfig
+    from miniprophet.subagents.source_reading import SourceReadingAgent
+    from miniprophet.subagents.subproblem import (
+        SubproblemAgent,
+        SubproblemSubagentConfig,
+    )
+    from miniprophet.tools.investigate_subproblem import InvestigateSubproblemTool
+    from miniprophet.tools.read_source import ReadSourceTool
+    from miniprophet.tools.retrieve_source import RetrieveSourceTool
+    from miniprophet.tools.search_tool import SearchForecastTool, SearchToolConfig
+    from miniprophet.tools.submit_subproblem import SubmitSubproblemTool
+    from miniprophet.tools.submit_summary import SubmitSummaryTool
+    from miniprophet.utils.serialize import recursive_merge
+
+    sr_config = SubagentConfig(**(subagents_config.get("source_reading") or {}))
+    sp_config = SubproblemSubagentConfig(**(subagents_config.get("subproblem") or {}))
+
+    def _merge_model(override: dict | None) -> dict:
+        if not override:
+            return dict(model_config)
+        return recursive_merge(dict(model_config), override)
+
+    def _wrap_list_sources():
+        # Local import to avoid top-level cycle
+        from miniprophet.tools.list_sources_tool import ListSourcesTool
+
+        return ListSourcesTool(registry=registry)
+
+    def source_reading_factory():
+        model_cfg = _merge_model(sr_config.model)
+        env = ForecastEnvironment(
+            tools=[RetrieveSourceTool(registry=registry), SubmitSummaryTool()],
+            registry=registry,
+        )
+        return SourceReadingAgent(
+            model=get_model(config=model_cfg),
+            env=env,
+            config=sr_config,
+        )
+
+    def subproblem_factory():
+        model_cfg = _merge_model(sp_config.model)
+        sp_search = SearchForecastTool(
             search_backend=search_tool,
-            source_registry=source_registry,
-            search_limit=search_limit,
-            config=search_config,
-        ),
-        AddSourceTool(source_registry=source_registry, board=board, outcomes=outcomes),
-        EditNoteTool(board=board, outcomes=outcomes),
-        SubmitTool(outcomes=outcomes, board=board),
+            registry=registry,
+            search_limit=sp_config.search_limit,
+            config=SearchToolConfig(search_results_limit=search_results_limit),
+        )
+        env = ForecastEnvironment(
+            tools=[
+                sp_search,
+                _wrap_list_sources(),
+                RetrieveSourceTool(registry=registry),
+                SubmitSubproblemTool(),
+            ],
+            registry=registry,
+        )
+        return SubproblemAgent(
+            model=get_model(config=model_cfg),
+            env=env,
+            config=sp_config,
+        )
+
+    spawners: list[Tool] = []
+    if sr_config.enabled:
+        spawners.append(
+            ReadSourceTool(
+                subagent_factory=source_reading_factory,
+                display_context=subagent_display_context,
+            )
+        )
+    if sp_config.enabled:
+        spawners.append(
+            InvestigateSubproblemTool(
+                subagent_factory=subproblem_factory,
+                display_context=subagent_display_context,
+            )
+        )
+    return spawners
+
+
+def create_planning_tools(
+    *,
+    ask_user_callback: Any = None,
+) -> list[Tool]:
+    """Build the planning-phase tool set (submit_plan + ask_user)."""
+    from miniprophet.tools.ask_user import AskUserTool
+    from miniprophet.tools.submit_plan import SubmitPlanTool
+
+    return [
+        SubmitPlanTool(),
+        AskUserTool(callback=ask_user_callback),
     ]
 
 
-class ForecastEnvConfig(BaseModel):
-    search_results_limit: int = 5
-    max_source_display_chars: int = 2000
-
-
 class ForecastEnvironment:
-    """Dispatches tool-call actions to registered Tool instances."""
+    """Dispatches tool-call actions to registered Tool instances.
+
+    Supports named tool sets (e.g. ``"execution"`` and ``"planning"``) that
+    can be switched at runtime via :meth:`set_active_tools`.
+    """
 
     def __init__(
         self,
         tools: list[Tool],
         *,
-        board: SourceBoard | None = None,
+        planning_tools: list[Tool] | None = None,
+        registry: SourceRegistry | None = None,
         **kwargs: Any,
     ) -> None:
-        if board is None:
-            board = SourceBoard()
-        self.board = board
-        self._tools: dict[str, Tool] = {t.name: t for t in tools}
+        if registry is None:
+            registry = SourceRegistry()
+        self.registry = registry
+        self._tool_sets: dict[str, dict[str, Tool]] = {
+            "execution": {t.name: t for t in tools},
+        }
+        if planning_tools:
+            self._tool_sets["planning"] = {t.name: t for t in planning_tools}
+        self._active_set = "execution"
+        self._tools: dict[str, Tool] = self._tool_sets[self._active_set]
+
+    def set_active_tools(self, name: str) -> None:
+        """Switch the active tool set (e.g. ``'planning'`` or ``'execution'``)."""
+        self._tools = self._tool_sets[name]
+        self._active_set = name
+
+    def get_active_tool_set(self) -> str:
+        return self._active_set
 
     async def execute(self, action: dict, **kwargs) -> dict:
         tool_name = action.get("name", "")
@@ -89,35 +239,8 @@ class ForecastEnvironment:
         return self._tools.get(name)
 
     def serialize_sources_state(self) -> dict:
-        """Serialize raw searched sources and compact board references."""
-        sources: dict[str, dict] = {}
-        search_tool = self.get_tool("search")
-        if search_tool is not None and hasattr(search_tool, "serialize_sources"):
-            payload = search_tool.serialize_sources()  # type: ignore[attr-defined]
-            if isinstance(payload, dict):
-                sources = payload
-
-        source_board: list[dict] = []
-        for entry in self.board.serialize():
-            board_entry = {
-                "source_id": entry.get("source_id"),
-                "note": entry.get("note", ""),
-                "reaction": entry.get("reaction", {}),
-            }
-            if not board_entry["source_id"]:
-                source = entry.get("source", {})
-                if isinstance(source, dict):
-                    board_entry["source"] = {
-                        "url": source.get("url", ""),
-                        "title": source.get("title", ""),
-                        "date": source.get("date"),
-                    }
-            source_board.append(board_entry)
-
-        return {
-            "sources": sources,
-            "source_board": source_board,
-        }
+        """Serialize all sources from the registry."""
+        return {"sources": self.registry.serialize()}
 
     def serialize(self) -> dict:
         return {}

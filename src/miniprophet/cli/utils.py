@@ -2,17 +2,91 @@
 
 from __future__ import annotations
 
+import contextvars
+from typing import Any
+
 from rich.console import Console
 
-_console: Console | None = None
+
+class ConsoleProxy:
+    """Delegating wrapper around a Rich Console.
+
+    All attribute access is forwarded to an inner ``_target`` which defaults
+    to a normal :class:`Console`.  Call :func:`set_console_target` to swap the
+    target (e.g. to a :class:`TuiConsole` that writes into a Textual widget).
+
+    Python looks up dunder/special methods on the *type*, not the instance,
+    so ``__getattr__`` cannot intercept them.  We explicitly delegate the ones
+    that Rich's ``Console`` (and ``Live``) rely on.
+    """
+
+    def __init__(self) -> None:
+        object.__setattr__(self, "_target", Console())
+
+    def __getattr__(self, name: str):
+        return getattr(self._target, name)
+
+    def __setattr__(self, name: str, value):
+        if name == "_target":
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._target, name, value)
+
+    # -- dunder methods that must be forwarded explicitly --
+
+    def __enter__(self):
+        return self._target.__enter__()
+
+    def __exit__(self, *args):
+        return self._target.__exit__(*args)
+
+    def __repr__(self) -> str:
+        return repr(self._target)
 
 
-# create a console singleton for all CLI components to share
-def get_console() -> Console:
+_console: ConsoleProxy | None = None
+
+# Task-local console override: when set, get_console() returns this instead of
+# the global proxy. Used by subagents to capture their output into a buffered
+# Rich Console while running concurrently via asyncio.gather.
+_console_override: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "console_override", default=None
+)
+
+
+def get_console():
+    """Return the task-local console override if set, else the shared proxy."""
+    override = _console_override.get()
+    if override is not None:
+        return override
     global _console
     if _console is None:
-        _console = Console()
+        _console = ConsoleProxy()
     return _console
+
+
+def set_console_target(target) -> None:
+    """Swap the inner target of the global console proxy."""
+    proxy = _get_proxy()
+    object.__setattr__(proxy, "_target", target)
+
+
+def _get_proxy() -> ConsoleProxy:
+    """Return the underlying proxy, bypassing the task-local override."""
+    global _console
+    if _console is None:
+        _console = ConsoleProxy()
+    return _console
+
+
+def set_console_override(console) -> contextvars.Token:
+    """Set a task-local console override.  Returns a token to reset later."""
+    return _console_override.set(console)
+
+
+def reset_console_override(token: contextvars.Token) -> None:
+    """Restore the previous task-local console override."""
+    _console_override.reset(token)
 
 
 def format_token_count(n: int) -> str:

@@ -31,23 +31,23 @@ Use the built-in CLI to persist keys into prophet's global `.env` file:
 
 ```bash
 # Step 1: search API keys (one of the below is good)
-prophet set PERPLEXITY_API_KEY "your-perplexity-key"
-prophet set BRAVE_API_KEY "your-brave-key"
-prophet set EXA_API_KEY "your-exa-key"
-prophet set TAVILY_API_KEY "your-tavily-key"
+miniprophet set PERPLEXITY_API_KEY "your-perplexity-key"
+miniprophet set BRAVE_API_KEY "your-brave-key"
+miniprophet set EXA_API_KEY "your-exa-key"
+miniprophet set TAVILY_API_KEY "your-tavily-key"
 
 # Step 2: model API key (if you use OpenRouter, this works with any model)
-prophet set OPENROUTER_API_KEY "your-openrouter-key"
+miniprophet set OPENROUTER_API_KEY "your-openrouter-key"
 
 # Or you go with LiteLLM (--model-class litellm), set model-specific API keys
 # For instance, if you want to use OpenAI models
-prophet set OPENAI_API_KEY "your-openai-key"
+miniprophet set OPENAI_API_KEY "your-openai-key"
 
 # interactive editor can do the same!
-prophet set -i
+miniprophet set -i
 ```
 
-By default, prophet stores and loads values from:
+By default, miniprophet stores and loads values from:
 
 - `~/.config/mini-prophet/.env` (in linux; or your platform's equivalent config directory)
 
@@ -64,7 +64,7 @@ You can still set environment variables directly in your shell if you prefer.
 Single run:
 
 ```bash
-prophet run \
+miniprophet run \
   --title "Which team will win the NBA championship in 2026?" \
   --outcomes "Bucks,Warriors,Celtics,Nuggets,Other" \
   --model-class litellm \
@@ -74,13 +74,13 @@ prophet run \
 Interactive mode:
 
 ```bash
-prophet run -i --model-class litellm --model gemini/gemini-3-flash-preview
+miniprophet run -i --model-class litellm --model gemini/gemini-3-flash-preview
 ```
 
 Eval mode with the sample file:
 
 ```bash
-prophet eval \
+miniprophet eval \
   -f examples/example_batch_job.jsonl \
   -o outputs/eval-demo \
   -w 4 \
@@ -91,24 +91,55 @@ prophet eval \
 Resume an interrupted eval run and skip completed run IDs:
 
 ```bash
-prophet eval -f examples/example_batch_job.jsonl -o outputs/eval-demo --resume
+miniprophet eval -f examples/example_batch_job.jsonl -o outputs/eval-demo --resume
 ```
 
 Run eval directly from a standardized dataset:
 
 ```bash
-prophet eval -d weekly-nba@latest -o outputs/weekly-nba
+miniprophet eval -d weekly-nba@latest -o outputs/weekly-nba
 ```
 
 List and validate datasets:
 
 ```bash
-prophet datasets list
-prophet datasets list weekly-nba
-prophet datasets validate -f examples/example_batch_job.jsonl
+miniprophet datasets list
+miniprophet datasets list weekly-nba
+miniprophet datasets validate -f examples/example_batch_job.jsonl
 ```
 
 Run artifacts now include `sources.json` in addition to `info.json` and `trajectory.json`.
+
+## Preview: Planning Phase (`dev` branch)
+
+The `dev` branch includes a new **planning phase** that runs before execution.
+Instead of immediately searching, the agent first produces a structured XML plan
+that decomposes the question into sub-queries, sub-problems, and factors to consider.
+You review and approve the plan before any research (and cost) begins.
+
+```bash
+# Switch to the dev branch
+git checkout dev
+pip install -e ".[perplexity]"
+
+# Run with planning enabled (default on dev)
+miniprophet run \
+  --title "Will the Lakers beat the Warriors tomorrow night?" \
+  --model-class openrouter \
+  --model gemini/gemini-3-flash-preview
+
+# Planning is on by default. To disable it:
+miniprophet run \
+  --title "Will it rain in SF tomorrow?" \
+  -c planning.enabled=false
+```
+
+The agent will:
+1. Enter a **planning phase** — analyze the question and submit a plan
+2. Display the plan as a tree and ask for your approval
+3. Enter the **execution phase** — follow the plan, search, and submit a probability
+
+The `dev` branch also includes an experimental Textual TUI (`--tui` flag).
 
 ## Contributing
 
